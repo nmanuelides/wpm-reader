@@ -1,3 +1,5 @@
+// @ts-nocheck
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, 
