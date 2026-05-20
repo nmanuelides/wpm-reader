@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  StyleSheet, Text, View, TouchableOpacity, 
+  StyleSheet, Text, View, TouchableOpacity, Pressable,
   FlatList, Dimensions, StatusBar, Image, PanResponder, Animated, Easing, Alert,
   BackHandler
 } from 'react-native';
@@ -75,7 +75,8 @@ const extractPdfCover = async (uri) => {
       return `data:image/jpeg;base64,${base64}`;
     }
   } catch (e) {
-    console.log("Failed to extract PDF cover", e);
+    console.error("Failed to extract PDF cover", e);
+    Alert.alert("Error de Portada PDF", e.message || String(e));
   }
   return null;
 };
@@ -205,8 +206,133 @@ const parseTxt = async (uri) => {
 
 const LIBRARY_FILE = FileSystem.documentDirectory + 'library.json';
 
+const BookCardItem = ({ item, theme, styles, openBook, pickCustomCover, deleteBook, activeMenuBookId, setActiveMenuBookId }) => {
+  const isMenuOpen = activeMenuBookId === item.id;
+  const menuAnim = useRef(new Animated.Value(0)).current;
+  const [shouldRenderMenu, setShouldRenderMenu] = useState(isMenuOpen);
+
+  useEffect(() => {
+    if (isMenuOpen) {
+      setShouldRenderMenu(true);
+      Animated.spring(menuAnim, {
+        toValue: 1,
+        friction: 6, // clean bounce
+        tension: 75, // faster spring response
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.spring(menuAnim, {
+        toValue: 0,
+        friction: 6,
+        tension: 75,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) {
+          setShouldRenderMenu(false);
+        }
+      });
+    }
+  }, [isMenuOpen]);
+
+  const handleLongPress = () => {
+    setActiveMenuBookId(isMenuOpen ? null : item.id);
+  };
+
+  const menuScale = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.7, 1],
+  });
+
+  const menuTranslateY = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-20, 0],
+  });
+
+  const menuOpacity = menuAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.5, 1],
+  });
+
+  return (
+    <View style={[styles.bookCardContainer, shouldRenderMenu && { zIndex: 999 }]}>
+      <TouchableOpacity 
+        style={styles.bookCard} 
+        onPress={() => {
+          if (activeMenuBookId) {
+            setActiveMenuBookId(null);
+          } else {
+            openBook(item);
+          }
+        }}
+        onLongPress={handleLongPress}
+        activeOpacity={0.9}
+      >
+        <View style={styles.bookCardInner}>
+          {item.coverImage ? (
+            <View style={styles.coverImageContainer}>
+              <Image source={{ uri: item.coverImage }} style={styles.coverImage} resizeMode="cover" />
+              <View style={styles.coverTitleOverlay}>
+                <Text style={styles.coverTitleOverlayText} numberOfLines={1}>{item.name.replace(/\.[^/.]+$/, "")}</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.coverPlaceholder}>
+              <Ionicons name="document-text" size={48} color={theme.textDark} />
+              <Text style={styles.bookCardTitle} numberOfLines={3}>{item.name.replace(/\.[^/.]+$/, "")}</Text>
+              <Text style={styles.uploadCoverHint}>Mantén presionado para opciones</Text>
+            </View>
+          )}
+          <View style={styles.progressBadge}>
+            <Text style={styles.progressBadgeText}>
+              {item.totalWords > 0 
+                ? `${Math.round((item.progress / item.totalWords) * 100)}%`
+                : (item.progress > 0 ? 'Resumiendo' : 'Nuevo')}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {shouldRenderMenu && (
+        <Animated.View 
+          style={[
+            styles.bookCardMenu,
+            {
+              opacity: menuOpacity,
+              transform: [
+                { scale: menuScale },
+                { translateY: menuTranslateY }
+              ]
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            style={[styles.menuOption, { borderRightWidth: 1, borderRightColor: theme.surface }]} 
+            onPress={() => {
+              setActiveMenuBookId(null);
+              pickCustomCover(item.id);
+            }}
+          >
+            <Ionicons name="image-outline" size={18} color={theme.accent} />
+            <Text style={styles.menuOptionText}>Portada</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.menuOption} 
+            onPress={() => deleteBook(item.id)}
+          >
+            <Ionicons name="trash-outline" size={18} color="#ff4a4a" />
+            <Text style={[styles.menuOptionText, { color: '#ff4a4a' }]}>Eliminar</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+    </View>
+  );
+};
+
 export default function App() {
   const [books, setBooks] = useState([]);
+  const [activeMenuBookId, setActiveMenuBookId] = useState(null);
+  const [bookToDelete, setBookToDelete] = useState(null);
   const [currentBook, setCurrentBook] = useState(null);
   const [words, setWords] = useState([]);
   const [dialogueFlags, setDialogueFlags] = useState([]);
@@ -626,6 +752,31 @@ export default function App() {
     }
   };
 
+  const deleteBook = (bookId) => {
+    const book = books.find(b => b.id === bookId);
+    if (book) {
+      setBookToDelete(book);
+    }
+  };
+
+  const executeDeleteBook = async () => {
+    if (!bookToDelete) return;
+    try {
+      // Delete book file
+      await FileSystem.deleteAsync(bookToDelete.uri, { idempotent: true });
+      // Delete cover file if it's local
+      if (bookToDelete.coverImage && bookToDelete.coverImage.startsWith('file://')) {
+        await FileSystem.deleteAsync(bookToDelete.coverImage, { idempotent: true });
+      }
+    } catch (e) {
+      console.log("Error deleting book files:", e);
+    }
+    // Remove from state
+    setBooks(prev => prev.filter(b => b.id !== bookToDelete.id));
+    setBookToDelete(null);
+    setActiveMenuBookId(null);
+  };
+
   const openBook = async (book) => {
     setCurrentBook(book);
     setWordIndex(book.progress || 0);
@@ -1006,57 +1157,43 @@ export default function App() {
   return (
     <SafeAreaView style={styles.homeContainer}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Centread</Text>
-        <TouchableOpacity style={styles.importButton} onPress={handleImport}>
-          <Ionicons name="add" size={24} color={theme.textOnAccent} />
-          <Text style={styles.importButtonText}>Import Books</Text>
-        </TouchableOpacity>
-      </View>
-
-      {books.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="book-outline" size={64} color={theme.textMuted} />
-          <Text style={styles.emptyText}>Your library is empty.</Text>
-          <Text style={styles.emptySubText}>Tap the import button to select EPUB, PDF or TXT files.</Text>
+      <Pressable style={{ flex: 1 }} onPress={() => setActiveMenuBookId(null)}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Centread</Text>
+          <TouchableOpacity style={styles.importButton} onPress={handleImport}>
+            <Ionicons name="add" size={24} color={theme.textOnAccent} />
+            <Text style={styles.importButtonText}>Import Books</Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          data={books}
-          keyExtractor={item => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.gridList}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.bookCard} 
-              onPress={() => openBook(item)}
-              onLongPress={() => pickCustomCover(item.id)}
-            >
-              {item.coverImage ? (
-                <View style={styles.coverImageContainer}>
-                  <Image source={{ uri: item.coverImage }} style={styles.coverImage} resizeMode="cover" />
-                  <View style={styles.coverTitleOverlay}>
-                    <Text style={styles.coverTitleOverlayText} numberOfLines={1}>{item.name.replace(/\.[^/.]+$/, "")}</Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.coverPlaceholder}>
-                  <Ionicons name="document-text" size={48} color={theme.textDark} />
-                  <Text style={styles.bookCardTitle} numberOfLines={3}>{item.name.replace(/\.[^/.]+$/, "")}</Text>
-                  <Text style={styles.uploadCoverHint}>Long press to set cover</Text>
-                </View>
-              )}
-              <View style={styles.progressBadge}>
-                <Text style={styles.progressBadgeText}>
-                  {item.totalWords > 0 
-                    ? `${Math.round((item.progress / item.totalWords) * 100)}%`
-                    : (item.progress > 0 ? 'Resuming' : 'New')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
-      )}
+
+        {books.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="book-outline" size={64} color={theme.textMuted} />
+            <Text style={styles.emptyText}>Your library is empty.</Text>
+            <Text style={styles.emptySubText}>Tap the import button to select EPUB, PDF or TXT files.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={books}
+            keyExtractor={item => item.id}
+            numColumns={2}
+            contentContainerStyle={styles.gridList}
+            onScrollBeginDrag={() => setActiveMenuBookId(null)}
+            renderItem={({ item }) => (
+              <BookCardItem
+                item={item}
+                theme={theme}
+                styles={styles}
+                openBook={openBook}
+                pickCustomCover={pickCustomCover}
+                deleteBook={deleteBook}
+                activeMenuBookId={activeMenuBookId}
+                setActiveMenuBookId={setActiveMenuBookId}
+              />
+            )}
+          />
+        )}
+      </Pressable>
 
       {/* Theme Picker Button */}
       {!currentBook && (
@@ -1106,6 +1243,34 @@ export default function App() {
                   );
                 }}
               />
+            </View>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {bookToDelete && (
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setBookToDelete(null)}>
+          <View style={styles.deleteModalContent}>
+            <Ionicons name="trash-bin-outline" size={48} color={theme.accent} style={{ marginBottom: 16 }} />
+            <Text style={styles.deleteModalTitle}>¿Eliminar libro?</Text>
+            <Text style={styles.deleteModalSub}>
+              ¿Estás seguro de que deseas eliminar "{bookToDelete.name.replace(/\.[^/.]+$/, "")}"? Esta acción no se puede deshacer.
+            </Text>
+            
+            <View style={styles.modalButtonGroup}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalCancelButton]} 
+                onPress={() => setBookToDelete(null)}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalDeleteButton]} 
+                onPress={executeDeleteBook}
+              >
+                <Text style={styles.modalDeleteButtonText}>Eliminar</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </TouchableOpacity>
@@ -1172,18 +1337,59 @@ const getStyles = (theme) => StyleSheet.create({
   gridList: {
     padding: 10,
   },
-  bookCard: {
+  bookCardContainer: {
     flex: 1,
     margin: 10,
     height: 220,
+    position: 'relative',
+    zIndex: 1,
+  },
+  bookCard: {
+    width: '100%',
+    height: '100%',
     backgroundColor: theme.surface,
     borderRadius: 12,
-    overflow: 'hidden',
     elevation: 5,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
+  },
+  bookCardInner: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  bookCardMenu: {
+    position: 'absolute',
+    bottom: -55,
+    left: 0,
+    right: 0,
+    height: 50,
+    backgroundColor: theme.surface,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    zIndex: 100,
+  },
+  menuOption: {
+    flex: 1,
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  menuOptionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   coverPlaceholder: {
     flex: 1,
@@ -1478,5 +1684,57 @@ const getStyles = (theme) => StyleSheet.create({
     color: theme.textLight,
     textAlign: 'center',
     lineHeight: 32,
+  },
+  deleteModalContent: {
+    backgroundColor: theme.surface,
+    padding: 24,
+    borderRadius: 20,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  deleteModalTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  deleteModalSub: {
+    color: theme.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalButtonGroup: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modalCancelButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalDeleteButton: {
+    backgroundColor: theme.accent,
+  },
+  modalDeleteButtonText: {
+    color: theme.textOnAccent,
+    fontSize: 14,
+    fontWeight: 'bold',
   }
 });
