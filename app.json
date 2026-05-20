@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "wpm-reader",
-    "slug": "wpm-reader",
+    "name": "Centread",
+    "slug": "centread",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "wpmreader",
+    "scheme": "centread",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -20,7 +20,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.magatsu.wpmreader"
+      "package": "com.magatsu.centread"
     },
     "web": {
       "output": "static",

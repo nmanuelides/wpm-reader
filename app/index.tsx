@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, 
-  FlatList, Dimensions, StatusBar, Image, PanResponder, Animated, Easing, Alert
+  FlatList, Dimensions, StatusBar, Image, PanResponder, Animated, Easing, Alert,
+  BackHandler
 } from 'react-native';
 
 const HUES = [0, 30, 140, 210, 280, 330];
@@ -54,6 +55,27 @@ const extractEpubCover = async (uri) => {
     }
   } catch (e) {
     console.log("Failed to extract cover", e);
+  }
+  return null;
+};
+
+const extractPdfCover = async (uri) => {
+  try {
+    const PdfThumbnail = require('react-native-pdf-thumbnail').default;
+    const result = await PdfThumbnail.generate(uri, 0);
+    if (result && result.uri) {
+      const base64 = await FileSystem.readAsStringAsync(result.uri, {
+        encoding: 'base64',
+      });
+      try {
+        await FileSystem.deleteAsync(result.uri, { idempotent: true });
+      } catch (e) {
+        console.log("Failed to delete temp pdf thumbnail:", e);
+      }
+      return `data:image/jpeg;base64,${base64}`;
+    }
+  } catch (e) {
+    console.log("Failed to extract PDF cover", e);
   }
   return null;
 };
@@ -562,6 +584,8 @@ export default function App() {
           let coverImage = null;
           if (permanentUri.toLowerCase().endsWith('.epub')) {
             coverImage = await extractEpubCover(permanentUri);
+          } else if (permanentUri.toLowerCase().endsWith('.pdf')) {
+            coverImage = await extractPdfCover(permanentUri);
           }
           return {
             id: permanentUri,
@@ -636,6 +660,24 @@ export default function App() {
     setCurrentBook(null);
     setWords([]);
   };
+
+  const closeBookRef = useRef(closeBook);
+  useEffect(() => {
+    closeBookRef.current = closeBook;
+  });
+
+  useEffect(() => {
+    const handleBackButton = () => {
+      if (currentBook) {
+        closeBookRef.current();
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackButton);
+    return () => backHandler.remove();
+  }, [currentBook]);
 
   // --- Playback Control ---
 
@@ -965,7 +1007,7 @@ export default function App() {
     <SafeAreaView style={styles.homeContainer}>
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Library</Text>
+        <Text style={styles.headerTitle}>Centread</Text>
         <TouchableOpacity style={styles.importButton} onPress={handleImport}>
           <Ionicons name="add" size={24} color={theme.textOnAccent} />
           <Text style={styles.importButtonText}>Import Books</Text>
