@@ -206,6 +206,34 @@ const parseTxt = async (uri) => {
 
 const LIBRARY_FILE = FileSystem.documentDirectory + 'library.json';
 
+const parsePdf = async (uri) => {
+  try {
+    const { extractText, isAvailable } = require('expo-pdf-text-extract');
+    if (!isAvailable()) {
+      return {
+        words: ["PDF", "extraction", "no", "disponible", "en", "este", "entorno.", "Usa", "el", "APK", "instalado."],
+        dialogueFlags: [],
+        chapterMarkers: [{ index: 0, title: 'PDF' }]
+      };
+    }
+    const text = await extractText(uri);
+    const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const { words, flags } = extractWordsAndDialogue(cleanText);
+    return {
+      words: words.length > 0 ? words : ["El", "PDF", "no", "contiene", "texto", "extraíble."],
+      dialogueFlags: flags,
+      chapterMarkers: [{ index: 0, title: 'PDF' }]
+    };
+  } catch (e) {
+    console.error('Error parsing PDF:', e);
+    return {
+      words: ["Error", "al", "leer", "el", "PDF:", e.message || String(e)],
+      dialogueFlags: [],
+      chapterMarkers: [{ index: 0, title: 'Error' }]
+    };
+  }
+};
+
 const BookCardItem = ({ item, theme, styles, openBook, pickCustomCover, deleteBook, activeMenuBookId, setActiveMenuBookId }) => {
   const isMenuOpen = activeMenuBookId === item.id;
   const menuAnim = useRef(new Animated.Value(0)).current;
@@ -791,7 +819,7 @@ export default function App() {
     } else if (extension === 'epub') {
       result = await parseEpub(book.uri);
     } else if (extension === 'pdf') {
-      result.words = ["PDF", "parsing", "requires", "advanced", "native", "modules,", "so", "this", "is", "a", "placeholder."];
+      result = await parsePdf(book.uri);
     } else {
       result.words = ["Unsupported", "format"];
     }
@@ -1543,7 +1571,8 @@ const getStyles = (theme) => StyleSheet.create({
     alignItems: 'flex-end',
   },
   centerPartContainer: {
-    paddingHorizontal: 2, // Tiny padding to prevent italic clipping
+    paddingHorizontal: 6, // Extra room for italic glyphs to not clip neighbors
+    minWidth: 18,         // Prevent container collapsing on narrow letters
     alignItems: 'center',
   },
   rightPartContainer: {
