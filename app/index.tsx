@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 
 const HUES = [0, 30, 140, 210, 280, 330];
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -109,34 +109,43 @@ const decodeHTMLEntities = (text) => {
     .replace(/&#x2013;/gi, '–');
 };
 
-const extractWordsAndDialogue = (text) => {
+const extractWordsAndDialogue = async (text) => {
   let inDialogue = false;
   const words = [];
   const flags = [];
 
   const tokens = text.split(/(\s+)/);
-  for (const token of tokens) {
-    if (token.includes('\n')) {
-      inDialogue = false;
-    }
-    
-    const w = token.trim();
-    if (w.length > 0) {
-      if (/^["“«]/.test(w)) {
-        inDialogue = true;
-      } else if (/^[—–]/.test(w)) {
-        inDialogue = !inDialogue;
-      }
+  const totalTokens = tokens.length;
+  const chunkSize = 5000;
 
-      words.push(w);
-      flags.push(inDialogue);
-
-      if (/[”»"][,.;:!?]?$/.test(w)) {
+  for (let i = 0; i < totalTokens; i += chunkSize) {
+    const end = Math.min(i + chunkSize, totalTokens);
+    for (let j = i; j < end; j++) {
+      const token = tokens[j];
+      if (token.includes('\n')) {
         inDialogue = false;
-      } else if (/[—–][,.;:!?]?$/.test(w) && w.length > 1) {
-        inDialogue = !inDialogue;
+      }
+      
+      const w = token.trim();
+      if (w.length > 0) {
+        if (/^["“«]/.test(w)) {
+          inDialogue = true;
+        } else if (/^[—–]/.test(w)) {
+          inDialogue = !inDialogue;
+        }
+
+        words.push(w);
+        flags.push(inDialogue);
+
+        if (/[”»"][,.;:!?]?$/.test(w)) {
+          inDialogue = false;
+        } else if (/[—–][,.;:!?]?$/.test(w) && w.length > 1) {
+          inDialogue = !inDialogue;
+        }
       }
     }
+    // Yield execution to keep the main thread responsive
+    await new Promise(resolve => setTimeout(resolve, 0));
   }
   return { words, flags };
 };
@@ -175,7 +184,7 @@ const parseEpub = async (uri) => {
         const strippedHtml = textWithNewlines.replace(/<[^>]+>/g, ' ');
         const cleanText = decodeHTMLEntities(strippedHtml);
         
-        const { words: chapterWords, flags: chapterFlags } = extractWordsAndDialogue(cleanText);
+        const { words: chapterWords, flags: chapterFlags } = await extractWordsAndDialogue(cleanText);
         
         if (chapterWords.length > 0) {
           chapterMarkers.push({ index: words.length, title: chapterTitle }); // Index where this chapter starts
@@ -196,7 +205,7 @@ const parseTxt = async (uri) => {
     const response = await fetch(uri);
     const text = await response.text();
     const cleanText = decodeHTMLEntities(text);
-    const { words, flags } = extractWordsAndDialogue(cleanText);
+    const { words, flags } = await extractWordsAndDialogue(cleanText);
     return { words, dialogueFlags: flags, chapterMarkers: [{ index: 0, title: 'Full Text' }] };
   } catch (e) {
     console.error("Error parsing TXT:", e);
@@ -218,7 +227,7 @@ const parsePdf = async (uri) => {
     }
     const text = await extractText(uri);
     const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const { words, flags } = extractWordsAndDialogue(cleanText);
+    const { words, flags } = await extractWordsAndDialogue(cleanText);
     return {
       words: words.length > 0 ? words : ["El", "PDF", "no", "contiene", "texto", "extraíble."],
       dialogueFlags: flags,
@@ -369,6 +378,12 @@ export default function App() {
   const [themeHue, setThemeHue] = useState(280); // 280 = Purple default
   const isMountedRef = useRef(false);
 
+  const [tutorialSeen, setTutorialSeen] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
+  const currentBookIdRef = useRef(null);
+
   useEffect(() => {
     const loadLibrary = async () => {
       try {
@@ -377,6 +392,7 @@ export default function App() {
         if (data.books) setBooks(data.books);
         if (data.themeHue !== undefined) setThemeHue(data.themeHue);
         if (data.wpm) { setFavoriteWpm(data.wpm); setWpm(data.wpm); }
+        if (data.tutorialSeen !== undefined) setTutorialSeen(data.tutorialSeen);
       } catch (e) {
         // Normal behavior on first launch when the file doesn't exist yet
         console.log("No library file found, starting fresh or error:", e.message);
@@ -391,14 +407,14 @@ export default function App() {
     if (!isMountedRef.current) return;
     const saveLibrary = async () => {
       try {
-        const data = { books, themeHue, wpm: favoriteWpm };
+        const data = { books, themeHue, wpm: favoriteWpm, tutorialSeen };
         await FileSystem.writeAsStringAsync(LIBRARY_FILE, JSON.stringify(data));
       } catch (e) {
         console.error("Error saving library", e);
       }
     };
     saveLibrary();
-  }, [books, themeHue, favoriteWpm]);
+  }, [books, themeHue, favoriteWpm, tutorialSeen]);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const uiOpacityAnim = useRef(new Animated.Value(1)).current;
   
@@ -433,7 +449,8 @@ export default function App() {
     };
   }, [themeHue]);
 
-  const styles = useMemo(() => getStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => getStyles(theme, insets), [theme, insets]);
   
   // RSVP State
   const [wordIndex, setWordIndex] = useState(0);
@@ -450,6 +467,31 @@ export default function App() {
   const [showRing, setShowRing] = useState(false);
   const [showRestoreRing, setShowRestoreRing] = useState(false);
   const wordFadeAnim = useRef(new Animated.Value(0)).current;
+
+  const tutorialAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (showTutorial) {
+      const anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(tutorialAnim, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(tutorialAnim, {
+            toValue: 0,
+            duration: 1500,
+            useNativeDriver: true,
+          })
+        ])
+      );
+      anim.start();
+      return () => anim.stop();
+    } else {
+      tutorialAnim.setValue(0);
+    }
+  }, [showTutorial, tutorialStep]);
 
   // Chapter Transition State
   const [chapterPopup, setChapterPopup] = useState({ visible: false, title: '' });
@@ -805,39 +847,59 @@ export default function App() {
     setActiveMenuBookId(null);
   };
 
-  const openBook = async (book) => {
+  const openBook = (book) => {
+    const openedBookId = book.id;
+    currentBookIdRef.current = openedBookId;
     setCurrentBook(book);
-    setWordIndex(book.progress || 0);
+    setWordIndex(0); // Safe initial state while loading
     setWords(["Loading..."]);
     setChapters([{ index: 0, title: 'Loading...' }]);
     
+    if (!tutorialSeen) {
+      setShowTutorial(true);
+      setTutorialStep(0);
+      setDontShowAgainChecked(false);
+    }
+
     const extension = book.name.split('.').pop().toLowerCase();
     
-    let result = { words: [], dialogueFlags: [], chapterMarkers: [{ index: 0, title: '' }] };
-    if (extension === 'txt') {
-      result = await parseTxt(book.uri);
-    } else if (extension === 'epub') {
-      result = await parseEpub(book.uri);
-    } else if (extension === 'pdf') {
-      result = await parsePdf(book.uri);
-    } else {
-      result.words = ["Unsupported", "format"];
-    }
-    
-    setWords(result.words);
-    setDialogueFlags(result.dialogueFlags || []);
-    setChapters(result.chapterMarkers);
+    // Parse the book in the background
+    (async () => {
+      let result = { words: [], dialogueFlags: [], chapterMarkers: [{ index: 0, title: '' }] };
+      try {
+        if (extension === 'txt') {
+          result = await parseTxt(book.uri);
+        } else if (extension === 'epub') {
+          result = await parseEpub(book.uri);
+        } else if (extension === 'pdf') {
+          result = await parsePdf(book.uri);
+        } else {
+          result.words = ["Unsupported", "format"];
+        }
+      } catch (err) {
+        console.error("Failed to parse book:", err);
+        result.words = ["Error", "loading", "book"];
+      }
+
+      if (currentBookIdRef.current === openedBookId) {
+        setWords(result.words);
+        setDialogueFlags(result.dialogueFlags || []);
+        setChapters(result.chapterMarkers);
+        setWordIndex(book.progress || 0); // Restore actual reading position
+      }
+    })();
   };
 
   const closeBook = () => {
     wakeUpUi();
-    // Save progress
-    if (currentBook) {
+    // Save progress only if the book was fully loaded to avoid erasing progress
+    if (currentBook && words.length > 0 && words[0] !== "Loading...") {
       setBooks(prev => prev.map(b => b.id === currentBook.id ? { ...b, progress: wordIndex, totalWords: words.length } : b));
     }
     setIsPlaying(false);
     setCurrentBook(null);
     setWords([]);
+    currentBookIdRef.current = null;
   };
 
   const closeBookRef = useRef(closeBook);
@@ -962,6 +1024,165 @@ export default function App() {
   };
 
   // --- Rendering ---
+
+  const renderTutorialOverlay = () => {
+    let cardStyle = {};
+    if (tutorialStep === 0 || tutorialStep === 1) {
+      cardStyle = { bottom: 60 };
+    } else if (tutorialStep === 2 || tutorialStep === 3) {
+      cardStyle = { top: 120 };
+    } else {
+      cardStyle = { alignSelf: 'center' };
+    }
+
+    const stepsData = [
+      {
+        title: "Swipe to Navigate",
+        desc: "Swipe left or right on the middle word to rewind or fast forward. Move your finger further to scrub faster.",
+        icon: "swap-horizontal",
+      },
+      {
+        title: "Zoom Out Context",
+        desc: "Long press the middle word to zoom out and view the surrounding paragraph context.",
+        icon: "scan",
+      },
+      {
+        title: "Set Favorite Speed",
+        desc: "Adjust speed easily:\n• Long press the WPM indicator to save your favorite speed.\n• Double tap the WPM indicator to restore your favorite speed.",
+        icon: "speedometer",
+      },
+      {
+        title: "Interface Controls",
+        desc: "A- / A+ adjusts font size. The bottom controls allow play/pause, manual WPM adjustments, and chapter skipping.",
+        icon: "cog",
+      },
+      {
+        title: "Ready to Read!",
+        desc: "You are all set to start reading! Enjoy your speed reading experience.",
+        icon: "checkmark-circle",
+      }
+    ];
+
+    const currentStepData = stepsData[tutorialStep];
+
+    const handleNext = () => {
+      if (tutorialStep < 4) {
+        setTutorialStep(tutorialStep + 1);
+      } else {
+        if (dontShowAgainChecked) {
+          setTutorialSeen(true);
+        }
+        setShowTutorial(false);
+      }
+    };
+
+    const handleSkip = () => {
+      setShowTutorial(false);
+    };
+
+    return (
+      <View style={styles.tutorialOverlay}>
+        {/* Render Highlights */}
+        {tutorialStep === 0 && (
+          <View style={styles.highlightRsvp}>
+            <Animated.View style={[styles.tutorialHand, { transform: [{ translateX: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-40, 40, -40] }) }] }]}>
+              <Ionicons name="hand-left" size={36} color={theme.accent} />
+            </Animated.View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 20, position: 'absolute', top: '40%' }}>
+              <Animated.View style={{ transform: [{ translateX: tutorialAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -15] }) }] }}>
+                <Ionicons name="chevron-back" size={24} color={theme.accent} />
+              </Animated.View>
+              <Animated.View style={{ transform: [{ translateX: tutorialAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 15] }) }] }}>
+                <Ionicons name="chevron-forward" size={24} color={theme.accent} />
+              </Animated.View>
+            </View>
+          </View>
+        )}
+
+        {tutorialStep === 1 && (
+          <View style={styles.highlightRsvp}>
+            <Animated.View style={[styles.tutorialHand, { 
+              transform: [
+                { scale: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.8, 1.1] }) }
+              ],
+              opacity: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.6, 1, 0.6] })
+            }]}>
+              <Ionicons name="hand-left" size={36} color={theme.accent} />
+            </Animated.View>
+          </View>
+        )}
+
+        {tutorialStep === 2 && (
+          <View style={[styles.highlightWpm, { left: width / 2 - 75 }]}>
+            <Animated.View style={[styles.tutorialHand, { 
+              top: 30,
+              transform: [
+                { scale: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.9, 1.1] }) }
+              ]
+            }]}>
+              <Ionicons name="hand-left" size={28} color={theme.accent} />
+            </Animated.View>
+          </View>
+        )}
+
+        {tutorialStep === 3 && (
+          <>
+            <View style={styles.highlightTopBar} />
+            <View style={styles.highlightControls} />
+          </>
+        )}
+
+        {/* Tutorial Instruction Card */}
+        <View style={[styles.tutorialCard, cardStyle]}>
+          {tutorialStep < 4 && (
+            <TouchableOpacity style={styles.tutorialSkipButton} onPress={handleSkip}>
+              <Text style={styles.tutorialSkipText}>Skip</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.tutorialHeaderIcon}>
+            <Ionicons name={currentStepData.icon} size={36} color={theme.accent} />
+          </View>
+
+          <Text style={styles.tutorialTitle}>{currentStepData.title}</Text>
+          <Text style={styles.tutorialText}>{currentStepData.desc}</Text>
+
+          {/* Progress Dots */}
+          <View style={styles.tutorialDotsContainer}>
+            {stepsData.map((_, i) => (
+              <View 
+                key={i} 
+                style={[
+                  styles.tutorialDot, 
+                  i === tutorialStep ? styles.tutorialDotActive : styles.tutorialDotInactive
+                ]} 
+              />
+            ))}
+          </View>
+
+          {/* Don't Show Again Checkbox */}
+          {tutorialStep === 4 && (
+            <TouchableOpacity 
+              style={styles.checkboxContainer} 
+              activeOpacity={0.8}
+              onPress={() => setDontShowAgainChecked(!dontShowAgainChecked)}
+            >
+              <View style={[styles.checkbox, dontShowAgainChecked && styles.checkboxChecked]}>
+                {dontShowAgainChecked && <Ionicons name="checkmark" size={14} color={theme.textOnAccent} />}
+              </View>
+              <Text style={styles.checkboxLabel}>Don't show this tutorial again</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={styles.tutorialButton} onPress={handleNext}>
+            <Text style={styles.tutorialButtonText}>
+              {tutorialStep === 4 ? "Start Reading" : "Next"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   if (currentBook) {
     const currentWord = words[wordIndex] || "";
@@ -1178,6 +1399,7 @@ export default function App() {
             </TouchableOpacity>
           </View>
         </Animated.View>
+        {showTutorial && renderTutorialOverlay()}
       </SafeAreaView>
     );
   }
@@ -1307,7 +1529,7 @@ export default function App() {
   );
 }
 
-const getStyles = (theme) => StyleSheet.create({
+const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) => StyleSheet.create({
   // --- Global ---
   homeContainer: {
     flex: 1,
@@ -1765,5 +1987,171 @@ const getStyles = (theme) => StyleSheet.create({
     color: theme.textOnAccent,
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  // --- Tutorial Overlay ---
+  tutorialOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    zIndex: 1000,
+    justifyContent: 'center',
+  },
+  highlightRsvp: {
+    position: 'absolute',
+    top: '38%',
+    height: '24%',
+    left: '5%',
+    right: '5%',
+    borderWidth: 2,
+    borderColor: theme.accent,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  highlightWpm: {
+    position: 'absolute',
+    bottom: (insets.bottom || 0) + 214,
+    height: 40,
+    width: 130,
+    borderWidth: 2,
+    borderColor: theme.accent,
+    borderStyle: 'dashed',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  highlightTopBar: {
+    position: 'absolute',
+    top: (insets.top || 0) + 8,
+    left: '4%',
+    right: '4%',
+    height: 64,
+    borderWidth: 2,
+    borderColor: theme.accent,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  highlightControls: {
+    position: 'absolute',
+    bottom: (insets.bottom || 0) + 16,
+    left: '10%',
+    right: '10%',
+    height: 195,
+    borderWidth: 2,
+    borderColor: theme.accent,
+    borderStyle: 'dashed',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  tutorialHand: {
+    position: 'absolute',
+    top: '30%',
+    alignSelf: 'center',
+    zIndex: 15,
+  },
+  tutorialCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
+    alignSelf: 'center',
+    position: 'absolute',
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  tutorialSkipButton: {
+    position: 'absolute',
+    top: 16,
+    right: 20,
+    padding: 4,
+  },
+  tutorialSkipText: {
+    color: theme.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tutorialHeaderIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tutorialTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  tutorialText: {
+    color: theme.textLight,
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  tutorialDotsContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tutorialDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 4,
+  },
+  tutorialDotActive: {
+    backgroundColor: theme.accent,
+    width: 18,
+  },
+  tutorialDotInactive: {
+    backgroundColor: theme.textDark,
+  },
+  tutorialButton: {
+    backgroundColor: theme.accent,
+    width: '100%',
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tutorialButtonText: {
+    color: theme.textOnAccent,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: theme.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.accent,
+  },
+  checkboxLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
   }
 });
