@@ -1191,6 +1191,10 @@ export default function App() {
     const centerLetter = currentWord.charAt(midIdx);
     const rightPart = currentWord.slice(midIdx + 1);
     
+    const isDialogue = !!dialogueFlags[wordIndex];
+    const spaceFontSize = fontSize * 0.15;
+    const spaceWidth = isDialogue ? spaceFontSize * 0.6 : 0;
+    
     // Find current chapter
     const currentChapter = [...chapters].reverse().find(marker => marker.index <= wordIndex) || chapters[0];
     const chapterTitle = currentChapter ? currentChapter.title : '';
@@ -1223,7 +1227,7 @@ export default function App() {
         </Animated.View>
 
         {/* RSVP Display */}
-        <View style={styles.rsvpContainer} {...panResponder.panHandlers}>
+        <View style={styles.rsvpContainer} {...panResponder.panHandlers} clipChildren={false}>
           {/* Guide lines for the eye */}
           <View style={styles.guideLineTop} />
           <View style={styles.guideLineBottom} />
@@ -1282,7 +1286,7 @@ export default function App() {
             </Animated.View>
           )}
           
-          <Animated.View style={{ opacity: wordFadeAnim, flex: 1, justifyContent: 'center' }}>
+          <Animated.View style={{ opacity: wordFadeAnim, flex: 1, justifyContent: 'center' }} clipChildren={false}>
             {showContext && (
               <Animated.View pointerEvents="none" style={[
                 styles.contextContainer,
@@ -1301,15 +1305,27 @@ export default function App() {
               </Animated.View>
             )}
 
-            <Animated.View style={[styles.wordWrapper, { opacity: wordWrapperAnim, transform: [{ scale: wordWrapperAnim.interpolate({ inputRange: [0, 1], outputRange: [1.5, 1] }) }] }]}>
-              <View style={styles.leftPartContainer}>
-                <Text style={[styles.wordText, { fontSize }, dialogueFlags[wordIndex] && { fontStyle: 'italic', color: theme.textLight }]}>{leftPart}</Text>
+            <Animated.View style={[styles.wordWrapper, { opacity: wordWrapperAnim, transform: [{ scale: wordWrapperAnim.interpolate({ inputRange: [0, 1], outputRange: [1.5, 1] }) }] }]} clipChildren={false}>
+              <View style={[styles.leftPartContainer, isDialogue && leftPart ? { transform: [{ translateX: spaceWidth }] } : null]} clipChildren={false}>
+                <Text style={[styles.wordText, { fontSize }, isDialogue && { fontStyle: 'italic', color: theme.textLight }]}>
+                  {isDialogue && !!leftPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                  {leftPart}
+                  {isDialogue && !!leftPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                </Text>
               </View>
-              <View style={styles.centerPartContainer}>
-                <Text style={[styles.wordText, styles.redLetter, { fontSize }, dialogueFlags[wordIndex] && { fontStyle: 'italic', color: theme.accent }]}>{centerLetter}</Text>
+              <View style={styles.centerPartContainer} clipChildren={false}>
+                <Text style={[styles.wordText, styles.redLetter, { fontSize }, isDialogue && { fontStyle: 'italic', color: theme.accent }]}>
+                  {isDialogue && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                  {centerLetter}
+                  {isDialogue && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                </Text>
               </View>
-              <View style={styles.rightPartContainer}>
-                <Text style={[styles.wordText, { fontSize }, dialogueFlags[wordIndex] && { fontStyle: 'italic', color: theme.textLight }]}>{rightPart}</Text>
+              <View style={[styles.rightPartContainer, isDialogue && rightPart ? { transform: [{ translateX: -spaceWidth }] } : null]} clipChildren={false}>
+                <Text style={[styles.wordText, { fontSize }, isDialogue && { fontStyle: 'italic', color: theme.textLight }]}>
+                  {isDialogue && !!rightPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                  {rightPart}
+                  {isDialogue && !!rightPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                </Text>
               </View>
             </Animated.View>
           </Animated.View>
@@ -1757,6 +1773,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) => 
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'visible',
   },
   guideLineTop: {
     position: 'absolute',
@@ -1787,19 +1804,21 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) => 
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
+    overflow: 'visible',
   },
   leftPartContainer: {
     flex: 1,
     alignItems: 'flex-end',
+    overflow: 'visible',
   },
   centerPartContainer: {
-    paddingHorizontal: 6, // Extra room for italic glyphs to not clip neighbors
-    minWidth: 18,         // Prevent container collapsing on narrow letters
     alignItems: 'center',
+    overflow: 'visible',
   },
   rightPartContainer: {
     flex: 1,
     alignItems: 'flex-start',
+    overflow: 'visible',
   },
   wordText: {
     color: '#fff',
