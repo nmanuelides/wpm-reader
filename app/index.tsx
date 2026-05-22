@@ -212,8 +212,13 @@ const parseTxt = async (uri) => {
     return { words: ["Error", "parsing", "TXT", "file."], dialogueFlags: [false, false, false, false], chapterMarkers: [{ index: 0, title: 'Error' }] };
   }
 };
-
 const LIBRARY_FILE = FileSystem.documentDirectory + 'library.json';
+
+const getBookCacheUri = (bookId) => {
+  const parts = bookId.split('/');
+  const filename = parts[parts.length - 1];
+  return FileSystem.documentDirectory + 'cache_' + filename + '.json';
+};
 
 const parsePdf = async (uri) => {
   try {
@@ -391,7 +396,17 @@ export default function App() {
         const data = JSON.parse(content);
         if (data.books) setBooks(data.books);
         if (data.themeHue !== undefined) setThemeHue(data.themeHue);
-        if (data.wpm) { setFavoriteWpm(data.wpm); setWpm(data.wpm); }
+        
+        // Backwards compatible loading:
+        if (data.favoriteWpm !== undefined) {
+          setFavoriteWpm(data.favoriteWpm);
+        } else if (data.wpm !== undefined) {
+          setFavoriteWpm(data.wpm);
+        }
+        if (data.wpm !== undefined) {
+          setWpm(data.wpm);
+        }
+        
         if (data.tutorialSeen !== undefined) setTutorialSeen(data.tutorialSeen);
       } catch (e) {
         // Normal behavior on first launch when the file doesn't exist yet
@@ -407,14 +422,14 @@ export default function App() {
     if (!isMountedRef.current) return;
     const saveLibrary = async () => {
       try {
-        const data = { books, themeHue, wpm: favoriteWpm, tutorialSeen };
+        const data = { books, themeHue, wpm, favoriteWpm, tutorialSeen };
         await FileSystem.writeAsStringAsync(LIBRARY_FILE, JSON.stringify(data));
       } catch (e) {
         console.error("Error saving library", e);
       }
     };
     saveLibrary();
-  }, [books, themeHue, favoriteWpm, tutorialSeen]);
+  }, [books, themeHue, wpm, favoriteWpm, tutorialSeen]);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const uiOpacityAnim = useRef(new Animated.Value(1)).current;
   
@@ -838,6 +853,9 @@ export default function App() {
       if (bookToDelete.coverImage && bookToDelete.coverImage.startsWith('file://')) {
         await FileSystem.deleteAsync(bookToDelete.coverImage, { idempotent: true });
       }
+      // Delete cache file
+      const cacheUri = getBookCacheUri(bookToDelete.id);
+      await FileSystem.deleteAsync(cacheUri, { idempotent: true });
     } catch (e) {
       console.log("Error deleting book files:", e);
     }
@@ -865,20 +883,44 @@ export default function App() {
     
     // Parse the book in the background
     (async () => {
-      let result = { words: [], dialogueFlags: [], chapterMarkers: [{ index: 0, title: '' }] };
+      const cacheUri = getBookCacheUri(openedBookId);
+      let result = null;
       try {
-        if (extension === 'txt') {
-          result = await parseTxt(book.uri);
-        } else if (extension === 'epub') {
-          result = await parseEpub(book.uri);
-        } else if (extension === 'pdf') {
-          result = await parsePdf(book.uri);
-        } else {
-          result.words = ["Unsupported", "format"];
+        const cacheContent = await FileSystem.readAsStringAsync(cacheUri);
+        result = JSON.parse(cacheContent);
+      } catch (cacheErr) {
+        console.log("No valid cache found, parsing from scratch:", cacheErr.message);
+      }
+
+      if (!result) {
+        result = { words: [], dialogueFlags: [], chapterMarkers: [{ index: 0, title: '' }] };
+        try {
+          if (extension === 'txt') {
+            result = await parseTxt(book.uri);
+          } else if (extension === 'epub') {
+            result = await parseEpub(book.uri);
+          } else if (extension === 'pdf') {
+            result = await parsePdf(book.uri);
+          } else {
+            result.words = ["Unsupported", "format"];
+          }
+
+          // Cache the successfully parsed content asynchronously
+          if (result && result.words && result.words.length > 0 && result.words[0] !== "Error") {
+            try {
+              await FileSystem.writeAsStringAsync(cacheUri, JSON.stringify({
+                words: result.words,
+                dialogueFlags: result.dialogueFlags,
+                chapterMarkers: result.chapterMarkers
+              }));
+            } catch (writeErr) {
+              console.log("Failed to write book cache:", writeErr);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to parse book:", err);
+          result.words = ["Error", "loading", "book"];
         }
-      } catch (err) {
-        console.error("Failed to parse book:", err);
-        result.words = ["Error", "loading", "book"];
       }
 
       if (currentBookIdRef.current === openedBookId) {
@@ -1194,6 +1236,7 @@ export default function App() {
     const isDialogue = !!dialogueFlags[wordIndex];
     const spaceFontSize = fontSize * 0.15;
     const spaceWidth = isDialogue ? spaceFontSize * 0.6 : 0;
+    const guideOffset = fontSize * 0.55 + 16;
     
     // Find current chapter
     const currentChapter = [...chapters].reverse().find(marker => marker.index <= wordIndex) || chapters[0];
@@ -1229,8 +1272,8 @@ export default function App() {
         {/* RSVP Display */}
         <View style={styles.rsvpContainer} {...panResponder.panHandlers} clipChildren={false}>
           {/* Guide lines for the eye */}
-          <View style={styles.guideLineTop} />
-          <View style={styles.guideLineBottom} />
+          <View style={[styles.guideLineTop, { transform: [{ translateY: -guideOffset }] }]} />
+          <View style={[styles.guideLineBottom, { transform: [{ translateY: guideOffset }] }]} />
 
           {/* Scrub Indicators */}
           {scrubStatus.active && (
@@ -1777,14 +1820,16 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) => 
   },
   guideLineTop: {
     position: 'absolute',
-    top: '40%',
+    top: '50%',
+    marginTop: -10,
     width: 2,
     height: 20,
     backgroundColor: theme.textDark,
   },
   guideLineBottom: {
     position: 'absolute',
-    bottom: '40%',
+    top: '50%',
+    marginTop: -10,
     width: 2,
     height: 20,
     backgroundColor: theme.textDark,
