@@ -207,7 +207,9 @@ const generateRadialGlowPng = (exponent = 2.0, coreSize = 0.0) => {
 };
 
 const RADIAL_GLOW_PNG = generateRadialGlowPng(2.0, 0.0);
-const BUTTON_GLOW_PNG = generateRadialGlowPng(5.2, 0.075); // Solid core up to 20%, then blurs/fades outwards
+const PLAY_GLOW_PNG = generateRadialGlowPng(8, 0.2); // Optimized for 64x64 play button
+const BUTTON_GLOW_PNG = generateRadialGlowPng(5.2, 0.075); // Optimized for 42x42 buttons
+const MINI_BUTTON_GLOW_PNG = generateRadialGlowPng(6.0, 0.1); // Optimized for 36x36 font buttons
 
 // --- Translations ---
 const isSpanish =
@@ -2203,20 +2205,48 @@ export default function App() {
               style={styles.miniIslandBlur}
             >
               <View style={styles.miniIslandInner}>
-                <TouchableOpacity
-                  onPress={decreaseFontSize}
-                  style={styles.miniIslandButton}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.miniIslandButtonText}>A-</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={increaseFontSize}
-                  style={[styles.miniIslandButton, { marginLeft: 8 }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.miniIslandButtonText}>A+</Text>
-                </TouchableOpacity>
+                <View style={styles.buttonWrapper}>
+                  <Image
+                    source={{ uri: MINI_BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 64,
+                        height: 64,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
+                  <TouchableOpacity
+                    onPress={decreaseFontSize}
+                    style={styles.miniIslandButton}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.miniIslandButtonText}>A-</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.buttonWrapper, { marginLeft: 8 }]}>
+                  <Image
+                    source={{ uri: MINI_BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 64,
+                        height: 64,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
+                  <TouchableOpacity
+                    onPress={increaseFontSize}
+                    style={styles.miniIslandButton}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.miniIslandButtonText}>A+</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </BlurView>
           </View>
@@ -2504,7 +2534,7 @@ export default function App() {
           >
             <Animated.View
               style={[
-                styles.speedControls,
+                styles.wpmIslandContainer,
                 { transform: [{ scale: wpmAnim }] },
               ]}
             >
@@ -2556,7 +2586,16 @@ export default function App() {
                   ]}
                 />
               )}
-              <Text style={styles.wpmText}>{wpm} WPM</Text>
+              <BlurView
+                intensity={10}
+                tint="default"
+                experimentalBlurMethod="dimezisBlurView"
+                style={styles.wpmIslandBlur}
+              >
+                <View style={styles.wpmIslandInner}>
+                  <Text style={styles.wpmText}>{wpm} WPM</Text>
+                </View>
+              </BlurView>
             </Animated.View>
           </TouchableOpacity>
 
@@ -2571,6 +2610,18 @@ export default function App() {
               <View style={styles.readerIslandInner}>
                 {/* Prev Chapter */}
                 <View style={styles.buttonWrapper}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 76,
+                        height: 76,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
                   <TouchableOpacity
                     style={styles.readerIslandButton}
                     onPress={prevChapter}
@@ -2586,6 +2637,18 @@ export default function App() {
 
                 {/* Decrease WPM */}
                 <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 76,
+                        height: 76,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
                   <TouchableOpacity
                     style={styles.readerIslandButton}
                     onPress={decreaseWpm}
@@ -2598,7 +2661,7 @@ export default function App() {
                 {/* Play/Pause Button with Halo Glow */}
                 <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
                   <Image
-                    source={{ uri: BUTTON_GLOW_PNG }}
+                    source={{ uri: PLAY_GLOW_PNG }}
                     style={[
                       styles.buttonGlow,
                       {
@@ -2627,6 +2690,18 @@ export default function App() {
 
                 {/* Increase WPM */}
                 <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 76,
+                        height: 76,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
                   <TouchableOpacity
                     style={styles.readerIslandButton}
                     onPress={increaseWpm}
@@ -2638,6 +2713,18 @@ export default function App() {
 
                 {/* Next Chapter */}
                 <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 76,
+                        height: 76,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
                   <TouchableOpacity
                     style={styles.readerIslandButton}
                     onPress={nextChapter}
