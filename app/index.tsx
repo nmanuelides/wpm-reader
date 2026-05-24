@@ -1,21 +1,195 @@
 // @ts-nocheck
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  StyleSheet, Text, View, TouchableOpacity, Pressable,
-  FlatList, Dimensions, StatusBar, Image, PanResponder, Animated, Easing, Alert,
-  BackHandler
-} from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
+import { extractText, isAvailable } from "expo-pdf-text-extract";
+import JSZip from "jszip";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  BackHandler,
+  Dimensions,
+  Easing,
+  FlatList,
+  Image,
+  PanResponder,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import PdfThumbnail from "react-native-pdf-thumbnail";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const HUES = [0, 30, 140, 210, 280, 330];
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import JSZip from 'jszip';
-import { Ionicons } from '@expo/vector-icons';
+const { width } = Dimensions.get("window");
 
-const { width } = Dimensions.get('window');
+// --- Dynamic Radial Gradient Image Generator (Pure JS PNG with Alpha) ---
+const generateRadialGlowPng = (exponent = 2.0, coreSize = 0.0) => {
+  const width = 32;
+  const height = 32;
+  const centerX = 15.5;
+  const centerY = 15.5;
+  const maxRadius = 16.0;
+
+  const rowSize = 1 + width * 4;
+  const rawSize = height * rowSize;
+  const raw = new Uint8Array(rawSize);
+
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * rowSize;
+    raw[rowOffset] = 0;
+    for (let x = 0; x < width; x++) {
+      const pixelOffset = rowOffset + 1 + x * 4;
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      let alpha = 0;
+      if (distance < maxRadius) {
+        const ratio = distance / maxRadius;
+        if (ratio < coreSize) {
+          alpha = 255;
+        } else {
+          const adjustedRatio = (ratio - coreSize) / (1 - coreSize);
+          alpha = Math.round(255 * Math.pow(1 - adjustedRatio, exponent));
+        }
+      }
+
+      raw[pixelOffset] = 255;
+      raw[pixelOffset + 1] = 255;
+      raw[pixelOffset + 2] = 255;
+      raw[pixelOffset + 3] = alpha;
+    }
+  }
+
+  let s1 = 1;
+  let s2 = 0;
+  for (let i = 0; i < rawSize; i++) {
+    s1 = (s1 + raw[i]) % 65521;
+    s2 = (s2 + s1) % 65521;
+  }
+  const adler = (s2 << 16) | s1;
+
+  const idatDataSize = 2 + 5 + rawSize + 4;
+  const idatData = new Uint8Array(idatDataSize);
+
+  idatData[0] = 0x78;
+  idatData[1] = 0x01;
+  idatData[2] = 0x01;
+  idatData[3] = rawSize & 0xff;
+  idatData[4] = (rawSize >> 8) & 0xff;
+  const nlen = ~rawSize & 0xffff;
+  idatData[5] = nlen & 0xff;
+  idatData[6] = (nlen >> 8) & 0xff;
+  idatData.set(raw, 7);
+
+  const adlerOffset = 7 + rawSize;
+  idatData[adlerOffset] = (adler >>> 24) & 0xff;
+  idatData[adlerOffset + 1] = (adler >>> 16) & 0xff;
+  idatData[adlerOffset + 2] = (adler >>> 8) & 0xff;
+  idatData[adlerOffset + 3] = adler & 0xff;
+
+  const crcTable = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    crcTable[n] = c;
+  }
+  const calculateCrc = (typeBytes, bodyBytes) => {
+    let crc = 0xffffffff;
+    for (let i = 0; i < typeBytes.length; i++) {
+      crc = crcTable[(crc ^ typeBytes[i]) & 0xff] ^ (crc >>> 8);
+    }
+    for (let i = 0; i < bodyBytes.length; i++) {
+      crc = crcTable[(crc ^ bodyBytes[i]) & 0xff] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+
+  const writeCrc = (arr, offset, crc) => {
+    arr[offset] = (crc >>> 24) & 0xff;
+    arr[offset + 1] = (crc >>> 16) & 0xff;
+    arr[offset + 2] = (crc >>> 8) & 0xff;
+    arr[offset + 3] = crc & 0xff;
+  };
+
+  const writeUInt32 = (arr, offset, val) => {
+    arr[offset] = (val >>> 24) & 0xff;
+    arr[offset + 1] = (val >>> 16) & 0xff;
+    arr[offset + 2] = (val >>> 8) & 0xff;
+    arr[offset + 3] = val & 0xff;
+  };
+
+  const totalPngSize = 8 + 25 + (12 + idatDataSize) + 12;
+  const png = new Uint8Array(totalPngSize);
+
+  png.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+
+  let p = 8;
+  writeUInt32(png, p, 13);
+  png.set([73, 72, 68, 82], p + 4);
+  const ihdrBody = [0, 0, 0, width, 0, 0, 0, height, 8, 6, 0, 0, 0];
+  png.set(ihdrBody, p + 8);
+  const ihdrCrc = calculateCrc(
+    new Uint8Array([73, 72, 68, 82]),
+    new Uint8Array(ihdrBody),
+  );
+  writeCrc(png, p + 21, ihdrCrc);
+
+  p += 25;
+  writeUInt32(png, p, idatDataSize);
+  png.set([73, 68, 65, 84], p + 4);
+  png.set(idatData, p + 8);
+  const idatCrc = calculateCrc(new Uint8Array([73, 68, 65, 84]), idatData);
+  writeCrc(png, p + 8 + idatDataSize, idatCrc);
+
+  p += 12 + idatDataSize;
+  writeUInt32(png, p, 0);
+  png.set([73, 69, 78, 68], p + 4);
+  const iendCrc = calculateCrc(
+    new Uint8Array([73, 69, 78, 68]),
+    new Uint8Array(0),
+  );
+  writeCrc(png, p + 8, iendCrc);
+
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let base64 = "";
+  let i = 0;
+  while (i < totalPngSize) {
+    const b1 = png[i++];
+    const b2 = i < totalPngSize ? png[i++] : NaN;
+    const b3 = i < totalPngSize ? png[i++] : NaN;
+
+    const enc1 = b1 >> 2;
+    const enc2 = ((b1 & 3) << 4) | (isNaN(b2) ? 0 : b2 >> 4);
+    const enc3 = isNaN(b2) ? 64 : ((b2 & 15) << 2) | (isNaN(b3) ? 0 : b3 >> 6);
+    const enc4 = isNaN(b3) ? 64 : b3 & 63;
+
+    base64 +=
+      chars.charAt(enc1) +
+      chars.charAt(enc2) +
+      (enc3 === 64 ? "=" : chars.charAt(enc3)) +
+      (enc4 === 64 ? "=" : chars.charAt(enc4));
+  }
+
+  return "data:image/png;base64," + base64;
+};
+
+const RADIAL_GLOW_PNG = generateRadialGlowPng(2.0, 0.0);
 
 // --- Helpers ---
 
@@ -37,7 +211,7 @@ const extractEpubCover = async (uri) => {
         break;
       }
     }
-    
+
     if (!coverFile) {
       for (const [filename, file] of Object.entries(zip.files)) {
         if (filename.match(/\.(jpe?g|png)$/i) && !filename.match(/icon/i)) {
@@ -48,9 +222,9 @@ const extractEpubCover = async (uri) => {
     }
 
     if (coverFile) {
-      const base64 = await coverFile.async('base64');
-      const ext = coverFile.name.split('.').pop().toLowerCase();
-      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const base64 = await coverFile.async("base64");
+      const ext = coverFile.name.split(".").pop().toLowerCase();
+      const mime = ext === "png" ? "image/png" : "image/jpeg";
       return `data:${mime};base64,${base64}`;
     }
   } catch (e) {
@@ -61,11 +235,10 @@ const extractEpubCover = async (uri) => {
 
 const extractPdfCover = async (uri) => {
   try {
-    const PdfThumbnail = require('react-native-pdf-thumbnail').default;
     const result = await PdfThumbnail.generate(uri, 0);
     if (result && result.uri) {
       const base64 = await FileSystem.readAsStringAsync(result.uri, {
-        encoding: 'base64',
+        encoding: "base64",
       });
       try {
         await FileSystem.deleteAsync(result.uri, { idempotent: true });
@@ -83,30 +256,30 @@ const extractPdfCover = async (uri) => {
 
 const decodeHTMLEntities = (text) => {
   return text
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&apos;/gi, "'")
-    .replace(/&mdash;/gi, '—')
-    .replace(/&ndash;/gi, '–')
-    .replace(/&ldquo;/gi, '“')
-    .replace(/&rdquo;/gi, '”')
-    .replace(/&lsquo;/gi, '‘')
-    .replace(/&rsquo;/gi, '’')
-    .replace(/&laquo;/gi, '«')
-    .replace(/&raquo;/gi, '»')
-    .replace(/&#8212;/g, '—')
-    .replace(/&#8211;/g, '–')
-    .replace(/&#8220;/g, '“')
-    .replace(/&#8221;/g, '”')
-    .replace(/&#8216;/g, '‘')
-    .replace(/&#8217;/g, '’')
-    .replace(/&#171;/g, '«')
-    .replace(/&#187;/g, '»')
-    .replace(/&#x2014;/gi, '—')
-    .replace(/&#x2013;/gi, '–');
+    .replace(/&mdash;/gi, "—")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&ldquo;/gi, "“")
+    .replace(/&rdquo;/gi, "”")
+    .replace(/&lsquo;/gi, "‘")
+    .replace(/&rsquo;/gi, "’")
+    .replace(/&laquo;/gi, "«")
+    .replace(/&raquo;/gi, "»")
+    .replace(/&#8212;/g, "—")
+    .replace(/&#8211;/g, "–")
+    .replace(/&#8220;/g, "“")
+    .replace(/&#8221;/g, "”")
+    .replace(/&#8216;/g, "‘")
+    .replace(/&#8217;/g, "’")
+    .replace(/&#171;/g, "«")
+    .replace(/&#187;/g, "»")
+    .replace(/&#x2014;/gi, "—")
+    .replace(/&#x2013;/gi, "–");
 };
 
 const extractWordsAndDialogue = async (text) => {
@@ -122,10 +295,10 @@ const extractWordsAndDialogue = async (text) => {
     const end = Math.min(i + chunkSize, totalTokens);
     for (let j = i; j < end; j++) {
       const token = tokens[j];
-      if (token.includes('\n')) {
+      if (token.includes("\n")) {
         inDialogue = false;
       }
-      
+
       const w = token.trim();
       if (w.length > 0) {
         if (/^["“«]/.test(w)) {
@@ -145,7 +318,7 @@ const extractWordsAndDialogue = async (text) => {
       }
     }
     // Yield execution to keep the main thread responsive
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
   return { words, flags };
 };
@@ -156,21 +329,26 @@ const parseEpub = async (uri) => {
     const response = await fetch(uri);
     const arrayBuffer = await response.arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);
-    
+
     let words = [];
     let dialogueFlags = [];
     let chapterMarkers = [];
-    
+
     // Simplistic extraction: just read all HTML/XHTML files and strip tags
     for (const [filename, file] of Object.entries(zip.files)) {
-      if (!file.dir && (filename.endsWith('.html') || filename.endsWith('.xhtml') || filename.endsWith('.htm'))) {
-        const content = await file.async('string');
+      if (
+        !file.dir &&
+        (filename.endsWith(".html") ||
+          filename.endsWith(".xhtml") ||
+          filename.endsWith(".htm"))
+      ) {
+        const content = await file.async("string");
         // Try to extract a chapter title
         let chapterTitle = `Chapter ${chapterMarkers.length + 1}`;
         const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
         const h1Match = content.match(/<h1[^>]*>([^<]+)<\/h1>/i);
         const h2Match = content.match(/<h2[^>]*>([^<]+)<\/h2>/i);
-        
+
         if (titleMatch && titleMatch[1].trim()) {
           chapterTitle = titleMatch[1].trim();
         } else if (h1Match && h1Match[1].trim()) {
@@ -180,12 +358,16 @@ const parseEpub = async (uri) => {
         }
 
         // Preserve paragraph breaks as newlines for dialogue detection, then strip HTML
-        const textWithNewlines = content.replace(/<\/p>|<br\s*\/?>|<\/div>/gi, '\n');
-        const strippedHtml = textWithNewlines.replace(/<[^>]+>/g, ' ');
+        const textWithNewlines = content.replace(
+          /<\/p>|<br\s*\/?>|<\/div>/gi,
+          "\n",
+        );
+        const strippedHtml = textWithNewlines.replace(/<[^>]+>/g, " ");
         const cleanText = decodeHTMLEntities(strippedHtml);
-        
-        const { words: chapterWords, flags: chapterFlags } = await extractWordsAndDialogue(cleanText);
-        
+
+        const { words: chapterWords, flags: chapterFlags } =
+          await extractWordsAndDialogue(cleanText);
+
         if (chapterWords.length > 0) {
           chapterMarkers.push({ index: words.length, title: chapterTitle }); // Index where this chapter starts
           words = words.concat(chapterWords);
@@ -193,10 +375,21 @@ const parseEpub = async (uri) => {
         }
       }
     }
-    return { words, dialogueFlags, chapterMarkers: chapterMarkers.length > 0 ? chapterMarkers : [{ index: 0, title: 'Book' }] };
+    return {
+      words,
+      dialogueFlags,
+      chapterMarkers:
+        chapterMarkers.length > 0
+          ? chapterMarkers
+          : [{ index: 0, title: "Book" }],
+    };
   } catch (e) {
     console.error("Error parsing EPUB:", e);
-    return { words: ["Error", "parsing", "EPUB", "file."], dialogueFlags: [false, false, false, false], chapterMarkers: [{ index: 0, title: 'Error' }] };
+    return {
+      words: ["Error", "parsing", "EPUB", "file."],
+      dialogueFlags: [false, false, false, false],
+      chapterMarkers: [{ index: 0, title: "Error" }],
+    };
   }
 };
 
@@ -206,49 +399,80 @@ const parseTxt = async (uri) => {
     const text = await response.text();
     const cleanText = decodeHTMLEntities(text);
     const { words, flags } = await extractWordsAndDialogue(cleanText);
-    return { words, dialogueFlags: flags, chapterMarkers: [{ index: 0, title: 'Full Text' }] };
+    return {
+      words,
+      dialogueFlags: flags,
+      chapterMarkers: [{ index: 0, title: "Full Text" }],
+    };
   } catch (e) {
     console.error("Error parsing TXT:", e);
-    return { words: ["Error", "parsing", "TXT", "file."], dialogueFlags: [false, false, false, false], chapterMarkers: [{ index: 0, title: 'Error' }] };
+    return {
+      words: ["Error", "parsing", "TXT", "file."],
+      dialogueFlags: [false, false, false, false],
+      chapterMarkers: [{ index: 0, title: "Error" }],
+    };
   }
 };
-const LIBRARY_FILE = FileSystem.documentDirectory + 'library.json';
+const LIBRARY_FILE = FileSystem.documentDirectory + "library.json";
 
 const getBookCacheUri = (bookId) => {
-  const parts = bookId.split('/');
+  const parts = bookId.split("/");
   const filename = parts[parts.length - 1];
-  return FileSystem.documentDirectory + 'cache_' + filename + '.json';
+  return FileSystem.documentDirectory + "cache_" + filename + ".json";
 };
 
 const parsePdf = async (uri) => {
   try {
-    const { extractText, isAvailable } = require('expo-pdf-text-extract');
     if (!isAvailable()) {
       return {
-        words: ["PDF", "extraction", "no", "disponible", "en", "este", "entorno.", "Usa", "el", "APK", "instalado."],
+        words: [
+          "PDF",
+          "extraction",
+          "no",
+          "disponible",
+          "en",
+          "este",
+          "entorno.",
+          "Usa",
+          "el",
+          "APK",
+          "instalado.",
+        ],
         dialogueFlags: [],
-        chapterMarkers: [{ index: 0, title: 'PDF' }]
+        chapterMarkers: [{ index: 0, title: "PDF" }],
       };
     }
     const text = await extractText(uri);
-    const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const cleanText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const { words, flags } = await extractWordsAndDialogue(cleanText);
     return {
-      words: words.length > 0 ? words : ["El", "PDF", "no", "contiene", "texto", "extraíble."],
+      words:
+        words.length > 0
+          ? words
+          : ["El", "PDF", "no", "contiene", "texto", "extraíble."],
       dialogueFlags: flags,
-      chapterMarkers: [{ index: 0, title: 'PDF' }]
+      chapterMarkers: [{ index: 0, title: "PDF" }],
     };
   } catch (e) {
-    console.error('Error parsing PDF:', e);
+    console.error("Error parsing PDF:", e);
     return {
       words: ["Error", "al", "leer", "el", "PDF:", e.message || String(e)],
       dialogueFlags: [],
-      chapterMarkers: [{ index: 0, title: 'Error' }]
+      chapterMarkers: [{ index: 0, title: "Error" }],
     };
   }
 };
 
-const BookCardItem = ({ item, theme, styles, openBook, pickCustomCover, deleteBook, activeMenuBookId, setActiveMenuBookId }) => {
+const BookCardItem = ({
+  item,
+  theme,
+  styles,
+  openBook,
+  pickCustomCover,
+  deleteBook,
+  activeMenuBookId,
+  setActiveMenuBookId,
+}) => {
   const isMenuOpen = activeMenuBookId === item.id;
   const menuAnim = useRef(new Animated.Value(0)).current;
   const [shouldRenderMenu, setShouldRenderMenu] = useState(isMenuOpen);
@@ -296,9 +520,11 @@ const BookCardItem = ({ item, theme, styles, openBook, pickCustomCover, deleteBo
   });
 
   return (
-    <View style={[styles.bookCardContainer, shouldRenderMenu && { zIndex: 999 }]}>
-      <TouchableOpacity 
-        style={styles.bookCard} 
+    <View
+      style={[styles.bookCardContainer, shouldRenderMenu && { zIndex: 999 }]}
+    >
+      <TouchableOpacity
+        style={styles.bookCard}
         onPress={() => {
           if (activeMenuBookId) {
             setActiveMenuBookId(null);
@@ -312,43 +538,55 @@ const BookCardItem = ({ item, theme, styles, openBook, pickCustomCover, deleteBo
         <View style={styles.bookCardInner}>
           {item.coverImage ? (
             <View style={styles.coverImageContainer}>
-              <Image source={{ uri: item.coverImage }} style={styles.coverImage} resizeMode="cover" />
+              <Image
+                source={{ uri: item.coverImage }}
+                style={styles.coverImage}
+                resizeMode="cover"
+              />
               <View style={styles.coverTitleOverlay}>
-                <Text style={styles.coverTitleOverlayText} numberOfLines={1}>{item.name.replace(/\.[^/.]+$/, "")}</Text>
+                <Text style={styles.coverTitleOverlayText} numberOfLines={1}>
+                  {item.name.replace(/\.[^/.]+$/, "")}
+                </Text>
               </View>
             </View>
           ) : (
             <View style={styles.coverPlaceholder}>
               <Ionicons name="document-text" size={48} color={theme.textDark} />
-              <Text style={styles.bookCardTitle} numberOfLines={3}>{item.name.replace(/\.[^/.]+$/, "")}</Text>
-              <Text style={styles.uploadCoverHint}>Mantén presionado para opciones</Text>
+              <Text style={styles.bookCardTitle} numberOfLines={3}>
+                {item.name.replace(/\.[^/.]+$/, "")}
+              </Text>
+              <Text style={styles.uploadCoverHint}>
+                Mantén presionado para opciones
+              </Text>
             </View>
           )}
           <View style={styles.progressBadge}>
             <Text style={styles.progressBadgeText}>
-              {item.totalWords > 0 
+              {item.totalWords > 0
                 ? `${Math.round((item.progress / item.totalWords) * 100)}%`
-                : (item.progress > 0 ? 'Resumiendo' : 'Nuevo')}
+                : item.progress > 0
+                  ? "Resumiendo"
+                  : "Nuevo"}
             </Text>
           </View>
         </View>
       </TouchableOpacity>
 
       {shouldRenderMenu && (
-        <Animated.View 
+        <Animated.View
           style={[
             styles.bookCardMenu,
             {
               opacity: menuOpacity,
-              transform: [
-                { scale: menuScale },
-                { translateY: menuTranslateY }
-              ]
-            }
+              transform: [{ scale: menuScale }, { translateY: menuTranslateY }],
+            },
           ]}
         >
-          <TouchableOpacity 
-            style={[styles.menuOption, { borderRightWidth: 1, borderRightColor: theme.surface }]} 
+          <TouchableOpacity
+            style={[
+              styles.menuOption,
+              { borderRightWidth: 1, borderRightColor: theme.surface },
+            ]}
             onPress={() => {
               setActiveMenuBookId(null);
               pickCustomCover(item.id);
@@ -357,16 +595,85 @@ const BookCardItem = ({ item, theme, styles, openBook, pickCustomCover, deleteBo
             <Ionicons name="image-outline" size={18} color={theme.accent} />
             <Text style={styles.menuOptionText}>Portada</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.menuOption} 
+
+          <TouchableOpacity
+            style={styles.menuOption}
             onPress={() => deleteBook(item.id)}
           >
             <Ionicons name="trash-outline" size={18} color="#ff4a4a" />
-            <Text style={[styles.menuOptionText, { color: '#ff4a4a' }]}>Eliminar</Text>
+            <Text style={[styles.menuOptionText, { color: "#ff4a4a" }]}>
+              Eliminar
+            </Text>
           </TouchableOpacity>
         </Animated.View>
       )}
+    </View>
+  );
+};
+
+const LibraryBackground = ({ themeHue, styles }) => {
+  return (
+    <View style={styles.backgroundContainer} pointerEvents="none">
+      {/* Base dark backdrop gradient (smoothly fades from dark theme hue down to near-black) */}
+      <LinearGradient
+        colors={[`hsl(${themeHue}, 25%, 8%)`, `hsl(${themeHue}, 15%, 3%)`]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      {/* Outer ambient glow (Wide, soft fade) */}
+      <Image
+        source={{ uri: RADIAL_GLOW_PNG }}
+        style={{
+          position: "absolute",
+          top: "55%",
+          left: -300,
+          width: 600,
+          height: 600,
+          opacity: 0.35,
+          transform: [{ translateY: -300 }],
+          tintColor: `hsl(${themeHue}, 70%, 30%)`,
+        }}
+        resizeMode="stretch"
+      />
+      {/* Inner core glow (Intense center) */}
+      <Image
+        source={{ uri: RADIAL_GLOW_PNG }}
+        style={{
+          position: "absolute",
+          top: "55%",
+          left: -275,
+          width: 500,
+          height: 500,
+          opacity: 0.85,
+          transform: [{ translateY: -275 }],
+          tintColor: `hsl(${themeHue}, 75%, 35%)`,
+        }}
+        resizeMode="stretch"
+      />
+
+      {/* Subtle top-left ambient light glow */}
+      <LinearGradient
+        colors={[`hsl(${themeHue}, 70%, 10%)`, "transparent"]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.5, y: 0.5 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Main glowing light source leak on the center-left */}
+      <LinearGradient
+        colors={[`hsl(${themeHue}, 100%, 15%)`, "transparent"]}
+        start={{ x: 1, y: 1 }}
+        end={{ x: 0.6, y: 0.5 }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          opacity: 0.95,
+        }}
+      />
     </View>
   );
 };
@@ -378,8 +685,8 @@ export default function App() {
   const [currentBook, setCurrentBook] = useState(null);
   const [words, setWords] = useState([]);
   const [dialogueFlags, setDialogueFlags] = useState([]);
-  const [chapters, setChapters] = useState([{ index: 0, title: '' }]);
-  
+  const [chapters, setChapters] = useState([{ index: 0, title: "" }]);
+
   const [themeHue, setThemeHue] = useState(280); // 280 = Purple default
   const isMountedRef = useRef(false);
 
@@ -396,7 +703,7 @@ export default function App() {
         const data = JSON.parse(content);
         if (data.books) setBooks(data.books);
         if (data.themeHue !== undefined) setThemeHue(data.themeHue);
-        
+
         // Backwards compatible loading:
         if (data.favoriteWpm !== undefined) {
           setFavoriteWpm(data.favoriteWpm);
@@ -406,11 +713,14 @@ export default function App() {
         if (data.wpm !== undefined) {
           setWpm(data.wpm);
         }
-        
+
         if (data.tutorialSeen !== undefined) setTutorialSeen(data.tutorialSeen);
       } catch (e) {
         // Normal behavior on first launch when the file doesn't exist yet
-        console.log("No library file found, starting fresh or error:", e.message);
+        console.log(
+          "No library file found, starting fresh or error:",
+          e.message,
+        );
       } finally {
         isMountedRef.current = true;
       }
@@ -432,26 +742,47 @@ export default function App() {
   }, [books, themeHue, wpm, favoriteWpm, tutorialSeen]);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const uiOpacityAnim = useRef(new Animated.Value(1)).current;
-  
+
   const theme = useMemo(() => {
     let h = themeHue;
     let s = 1;
     let l = 0.63;
     let c = (1 - Math.abs(2 * l - 1)) * s;
-    let x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    let x = c * (1 - Math.abs(((h / 60) % 2) - 1));
     let m = l - c / 2;
-    let r = 0, g = 0, b = 0;
-    if (0 <= h && h < 60) { r = c; g = x; b = 0; }
-    else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
-    else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
-    else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
-    else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
-    else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+    let r = 0,
+      g = 0,
+      b = 0;
+    if (0 <= h && h < 60) {
+      r = c;
+      g = x;
+      b = 0;
+    } else if (60 <= h && h < 120) {
+      r = x;
+      g = c;
+      b = 0;
+    } else if (120 <= h && h < 180) {
+      r = 0;
+      g = c;
+      b = x;
+    } else if (180 <= h && h < 240) {
+      r = 0;
+      g = x;
+      b = c;
+    } else if (240 <= h && h < 300) {
+      r = x;
+      g = 0;
+      b = c;
+    } else if (300 <= h && h < 360) {
+      r = c;
+      g = 0;
+      b = x;
+    }
     r = Math.round((r + m) * 255);
     g = Math.round((g + m) * 255);
     b = Math.round((b + m) * 255);
-    let yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-    const textOnAccent = (yiq >= 128) ? '#000000' : '#ffffff';
+    let yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    const textOnAccent = yiq >= 128 ? "#000000" : "#ffffff";
 
     return {
       accent: `hsl(${themeHue}, 100%, 63%)`,
@@ -460,20 +791,20 @@ export default function App() {
       textLight: `hsl(${themeHue}, 15%, 70%)`,
       textMuted: `hsl(${themeHue}, 15%, 50%)`,
       textDark: `hsl(${themeHue}, 15%, 35%)`,
-      textOnAccent
+      textOnAccent,
     };
   }, [themeHue]);
 
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(theme, insets), [theme, insets]);
-  
+
   // RSVP State
   const [wordIndex, setWordIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [favoriteWpm, setFavoriteWpm] = useState(250);
   const [wpm, setWpm] = useState(250); // Start with a decent reading speed
   const [fontSize, setFontSize] = useState(48); // Start with a large font
-  
+
   const playInterval = useRef(null);
   const lastTapRef = useRef(0);
   const wpmAnim = useRef(new Animated.Value(1)).current;
@@ -498,8 +829,8 @@ export default function App() {
             toValue: 0,
             duration: 1500,
             useNativeDriver: true,
-          })
-        ])
+          }),
+        ]),
       );
       anim.start();
       return () => anim.stop();
@@ -509,14 +840,17 @@ export default function App() {
   }, [showTutorial, tutorialStep]);
 
   // Chapter Transition State
-  const [chapterPopup, setChapterPopup] = useState({ visible: false, title: '' });
+  const [chapterPopup, setChapterPopup] = useState({
+    visible: false,
+    title: "",
+  });
   const chapterPopupAnim = useRef(new Animated.Value(0)).current;
   const prevChapterRef = useRef(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   useEffect(() => {
     if (chapters.length === 0 || words.length === 0) return;
-    
+
     let currentCh = chapters[0];
     for (let i = chapters.length - 1; i >= 0; i--) {
       if (wordIndex >= chapters[i].index) {
@@ -525,15 +859,20 @@ export default function App() {
       }
     }
 
-    if (prevChapterRef.current && prevChapterRef.current.index !== currentCh.index && isPlaying && !isTransitioning) {
+    if (
+      prevChapterRef.current &&
+      prevChapterRef.current.index !== currentCh.index &&
+      isPlaying &&
+      !isTransitioning
+    ) {
       // Pause playback and start transition
       setIsPlaying(false);
       setIsTransitioning(true);
-      
+
       // Step back to the last word of the previous chapter to fade it out
       const lastWordOfPrev = Math.max(0, currentCh.index - 1);
       setWordIndex(lastWordOfPrev);
-      
+
       // Keep ref updated to the new chapter so it doesn't trigger again
       prevChapterRef.current = currentCh;
 
@@ -547,14 +886,14 @@ export default function App() {
 
         setChapterPopup({ visible: true, title: currentCh.title });
         chapterPopupAnim.setValue(0);
-        
+
         Animated.timing(chapterPopupAnim, {
           toValue: 1,
           duration: 2000,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }).start(() => {
-          setChapterPopup({ visible: false, title: '' });
+          setChapterPopup({ visible: false, title: "" });
         });
 
         // 1.5s total delay before the new word starts appearing
@@ -595,7 +934,7 @@ export default function App() {
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     if (wakeUpTimeoutRef.current) clearTimeout(wakeUpTimeoutRef.current);
-    
+
     Animated.timing(uiOpacityAnim, {
       toValue: isPlaying ? 0.15 : 1,
       duration: isPlaying ? 1000 : 150, // Dim slowly, brighten fast
@@ -611,9 +950,9 @@ export default function App() {
 
   const wakeUpUi = () => {
     if (!isPlayingRef.current) return;
-    
+
     if (wakeUpTimeoutRef.current) clearTimeout(wakeUpTimeoutRef.current);
-    
+
     Animated.timing(uiOpacityAnim, {
       toValue: 1,
       duration: 150,
@@ -638,7 +977,11 @@ export default function App() {
 
   const scrubInterval = useRef(null);
   const currentScrubSpeed = useRef(0);
-  const [scrubStatus, setScrubStatus] = useState({ active: false, direction: 0, level: 0 });
+  const [scrubStatus, setScrubStatus] = useState({
+    active: false,
+    direction: 0,
+    level: 0,
+  });
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
   // Context View state
@@ -661,8 +1004,8 @@ export default function App() {
             toValue: 0.2,
             duration: 500,
             useNativeDriver: true,
-          })
-        ])
+          }),
+        ]),
       );
       animation.start();
       return () => animation.stop();
@@ -699,7 +1042,7 @@ export default function App() {
     const speedMs = Math.max(20, 300 - absSpeed * 1.5);
 
     scrubInterval.current = setInterval(() => {
-      setWordIndex(prev => {
+      setWordIndex((prev) => {
         if (speed > 0) {
           return prev >= wordsLengthRef.current - 1 ? prev : prev + 1;
         } else {
@@ -722,8 +1065,17 @@ export default function App() {
             showContextRef.current = true;
             setShowContext(true);
             Animated.parallel([
-              Animated.spring(contextAnim, { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }),
-              Animated.timing(wordWrapperAnim, { toValue: 0, duration: 150, useNativeDriver: true })
+              Animated.spring(contextAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+              Animated.timing(wordWrapperAnim, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+              }),
             ]).start();
           }
         }, 350); // 350ms long press
@@ -753,8 +1105,16 @@ export default function App() {
         if (showContextRef.current) {
           showContextRef.current = false;
           Animated.parallel([
-            Animated.timing(contextAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-            Animated.timing(wordWrapperAnim, { toValue: 1, duration: 150, useNativeDriver: true })
+            Animated.timing(contextAnim, {
+              toValue: 0,
+              duration: 150,
+              useNativeDriver: true,
+            }),
+            Animated.timing(wordWrapperAnim, {
+              toValue: 1,
+              duration: 150,
+              useNativeDriver: true,
+            }),
           ]).start(() => setShowContext(false));
         }
         currentScrubSpeed.current = 0;
@@ -765,14 +1125,22 @@ export default function App() {
         if (showContextRef.current) {
           showContextRef.current = false;
           Animated.parallel([
-            Animated.timing(contextAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-            Animated.timing(wordWrapperAnim, { toValue: 1, duration: 150, useNativeDriver: true })
+            Animated.timing(contextAnim, {
+              toValue: 0,
+              duration: 150,
+              useNativeDriver: true,
+            }),
+            Animated.timing(wordWrapperAnim, {
+              toValue: 1,
+              duration: 150,
+              useNativeDriver: true,
+            }),
           ]).start(() => setShowContext(false));
         }
         currentScrubSpeed.current = 0;
         updateScrubInterval();
-      }
-    })
+      },
+    }),
   ).current;
 
   // --- Actions ---
@@ -780,35 +1148,41 @@ export default function App() {
   const handleImport = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/plain', 'application/epub+zip', 'application/pdf'],
+        type: ["text/plain", "application/epub+zip", "application/pdf"],
         multiple: true,
-        copyToCacheDirectory: true
+        copyToCacheDirectory: true,
       });
-      
-      if (!result.canceled && result.assets) {
-        const newBooks = await Promise.all(result.assets.map(async (asset) => {
-          // Save file permanently to DocumentDirectory to avoid cache clear loss
-          const safeName = (asset.name || 'book').replace(/[^a-zA-Z0-9.\-_]/g, '_');
-          const permanentUri = FileSystem.documentDirectory + Date.now() + '_' + safeName;
-          await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
 
-          let coverImage = null;
-          if (permanentUri.toLowerCase().endsWith('.epub')) {
-            coverImage = await extractEpubCover(permanentUri);
-          } else if (permanentUri.toLowerCase().endsWith('.pdf')) {
-            coverImage = await extractPdfCover(permanentUri);
-          }
-          return {
-            id: permanentUri,
-            name: asset.name || 'Unknown Book',
-            uri: permanentUri,
-            progress: 0,
-            totalWords: 0,
-            coverImage
-          };
-        }));
+      if (!result.canceled && result.assets) {
+        const newBooks = await Promise.all(
+          result.assets.map(async (asset) => {
+            // Save file permanently to DocumentDirectory to avoid cache clear loss
+            const safeName = (asset.name || "book").replace(
+              /[^a-zA-Z0-9.\-_]/g,
+              "_",
+            );
+            const permanentUri =
+              FileSystem.documentDirectory + Date.now() + "_" + safeName;
+            await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
+
+            let coverImage = null;
+            if (permanentUri.toLowerCase().endsWith(".epub")) {
+              coverImage = await extractEpubCover(permanentUri);
+            } else if (permanentUri.toLowerCase().endsWith(".pdf")) {
+              coverImage = await extractPdfCover(permanentUri);
+            }
+            return {
+              id: permanentUri,
+              name: asset.name || "Unknown Book",
+              uri: permanentUri,
+              progress: 0,
+              totalWords: 0,
+              coverImage,
+            };
+          }),
+        );
         // Append to current library
-        setBooks(prev => [...prev, ...newBooks]);
+        setBooks((prev) => [...prev, ...newBooks]);
       }
     } catch (err) {
       console.log("Import error:", err);
@@ -819,17 +1193,25 @@ export default function App() {
   const pickCustomCover = async (bookId) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*'],
-        copyToCacheDirectory: true
+        type: ["image/*"],
+        copyToCacheDirectory: true,
       });
       if (!result.canceled && result.assets) {
         const imageUri = result.assets[0].uri;
         // Save image permanently
-        const safeName = (result.assets[0].name || 'cover').replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        const permanentUri = FileSystem.documentDirectory + Date.now() + '_cover_' + safeName;
+        const safeName = (result.assets[0].name || "cover").replace(
+          /[^a-zA-Z0-9.\-_]/g,
+          "_",
+        );
+        const permanentUri =
+          FileSystem.documentDirectory + Date.now() + "_cover_" + safeName;
         await FileSystem.copyAsync({ from: imageUri, to: permanentUri });
 
-        setBooks(prev => prev.map(b => b.id === bookId ? { ...b, coverImage: permanentUri } : b));
+        setBooks((prev) =>
+          prev.map((b) =>
+            b.id === bookId ? { ...b, coverImage: permanentUri } : b,
+          ),
+        );
       }
     } catch (err) {
       console.log("Cover import error:", err);
@@ -838,7 +1220,7 @@ export default function App() {
   };
 
   const deleteBook = (bookId) => {
-    const book = books.find(b => b.id === bookId);
+    const book = books.find((b) => b.id === bookId);
     if (book) {
       setBookToDelete(book);
     }
@@ -850,8 +1232,13 @@ export default function App() {
       // Delete book file
       await FileSystem.deleteAsync(bookToDelete.uri, { idempotent: true });
       // Delete cover file if it's local
-      if (bookToDelete.coverImage && bookToDelete.coverImage.startsWith('file://')) {
-        await FileSystem.deleteAsync(bookToDelete.coverImage, { idempotent: true });
+      if (
+        bookToDelete.coverImage &&
+        bookToDelete.coverImage.startsWith("file://")
+      ) {
+        await FileSystem.deleteAsync(bookToDelete.coverImage, {
+          idempotent: true,
+        });
       }
       // Delete cache file
       const cacheUri = getBookCacheUri(bookToDelete.id);
@@ -860,7 +1247,7 @@ export default function App() {
       console.log("Error deleting book files:", e);
     }
     // Remove from state
-    setBooks(prev => prev.filter(b => b.id !== bookToDelete.id));
+    setBooks((prev) => prev.filter((b) => b.id !== bookToDelete.id));
     setBookToDelete(null);
     setActiveMenuBookId(null);
   };
@@ -871,16 +1258,16 @@ export default function App() {
     setCurrentBook(book);
     setWordIndex(0); // Safe initial state while loading
     setWords(["Loading..."]);
-    setChapters([{ index: 0, title: 'Loading...' }]);
-    
+    setChapters([{ index: 0, title: "Loading..." }]);
+
     if (!tutorialSeen) {
       setShowTutorial(true);
       setTutorialStep(0);
       setDontShowAgainChecked(false);
     }
 
-    const extension = book.name.split('.').pop().toLowerCase();
-    
+    const extension = book.name.split(".").pop().toLowerCase();
+
     // Parse the book in the background
     (async () => {
       const cacheUri = getBookCacheUri(openedBookId);
@@ -889,30 +1276,45 @@ export default function App() {
         const cacheContent = await FileSystem.readAsStringAsync(cacheUri);
         result = JSON.parse(cacheContent);
       } catch (cacheErr) {
-        console.log("No valid cache found, parsing from scratch:", cacheErr.message);
+        console.log(
+          "No valid cache found, parsing from scratch:",
+          cacheErr.message,
+        );
       }
 
       if (!result) {
-        result = { words: [], dialogueFlags: [], chapterMarkers: [{ index: 0, title: '' }] };
+        result = {
+          words: [],
+          dialogueFlags: [],
+          chapterMarkers: [{ index: 0, title: "" }],
+        };
         try {
-          if (extension === 'txt') {
+          if (extension === "txt") {
             result = await parseTxt(book.uri);
-          } else if (extension === 'epub') {
+          } else if (extension === "epub") {
             result = await parseEpub(book.uri);
-          } else if (extension === 'pdf') {
+          } else if (extension === "pdf") {
             result = await parsePdf(book.uri);
           } else {
             result.words = ["Unsupported", "format"];
           }
 
           // Cache the successfully parsed content asynchronously
-          if (result && result.words && result.words.length > 0 && result.words[0] !== "Error") {
+          if (
+            result &&
+            result.words &&
+            result.words.length > 0 &&
+            result.words[0] !== "Error"
+          ) {
             try {
-              await FileSystem.writeAsStringAsync(cacheUri, JSON.stringify({
-                words: result.words,
-                dialogueFlags: result.dialogueFlags,
-                chapterMarkers: result.chapterMarkers
-              }));
+              await FileSystem.writeAsStringAsync(
+                cacheUri,
+                JSON.stringify({
+                  words: result.words,
+                  dialogueFlags: result.dialogueFlags,
+                  chapterMarkers: result.chapterMarkers,
+                }),
+              );
             } catch (writeErr) {
               console.log("Failed to write book cache:", writeErr);
             }
@@ -936,7 +1338,13 @@ export default function App() {
     wakeUpUi();
     // Save progress only if the book was fully loaded to avoid erasing progress
     if (currentBook && words.length > 0 && words[0] !== "Loading...") {
-      setBooks(prev => prev.map(b => b.id === currentBook.id ? { ...b, progress: wordIndex, totalWords: words.length } : b));
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === currentBook.id
+            ? { ...b, progress: wordIndex, totalWords: words.length }
+            : b,
+        ),
+      );
     }
     setIsPlaying(false);
     setCurrentBook(null);
@@ -958,7 +1366,10 @@ export default function App() {
       return false;
     };
 
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackButton);
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      handleBackButton,
+    );
     return () => backHandler.remove();
   }, [currentBook]);
 
@@ -968,7 +1379,7 @@ export default function App() {
     if (isPlaying && words.length > 0) {
       const msPerWord = (60 / wpm) * 1000;
       playInterval.current = setInterval(() => {
-        setWordIndex(prev => {
+        setWordIndex((prev) => {
           if (prev >= words.length - 1) {
             setIsPlaying(false);
             return prev;
@@ -985,16 +1396,28 @@ export default function App() {
     };
   }, [isPlaying, wpm, words.length]);
 
-  const increaseWpm = () => { wakeUpUi(); setWpm(prev => prev + 10); };
-  const decreaseWpm = () => { wakeUpUi(); setWpm(prev => (prev > 10 ? prev - 10 : prev)); };
+  const increaseWpm = () => {
+    wakeUpUi();
+    setWpm((prev) => prev + 10);
+  };
+  const decreaseWpm = () => {
+    wakeUpUi();
+    setWpm((prev) => (prev > 10 ? prev - 10 : prev));
+  };
 
-  const increaseFontSize = () => { wakeUpUi(); setFontSize(prev => prev + 4); };
-  const decreaseFontSize = () => { wakeUpUi(); setFontSize(prev => (prev > 16 ? prev - 4 : prev)); };
+  const increaseFontSize = () => {
+    wakeUpUi();
+    setFontSize((prev) => prev + 4);
+  };
+  const decreaseFontSize = () => {
+    wakeUpUi();
+    setFontSize((prev) => (prev > 16 ? prev - 4 : prev));
+  };
 
   const handleWpmPress = () => {
     wakeUpUi();
     const now = Date.now();
-    if (lastTapRef.current && (now - lastTapRef.current) < 300) {
+    if (lastTapRef.current && now - lastTapRef.current < 300) {
       // Double tap
       setWpm(favoriteWpm);
       lastTapRef.current = 0;
@@ -1011,8 +1434,17 @@ export default function App() {
       // Button absorbs the ring
       setTimeout(() => {
         Animated.sequence([
-          Animated.timing(wpmAnim, { toValue: 0.85, duration: 100, useNativeDriver: true }),
-          Animated.spring(wpmAnim, { toValue: 1, friction: 3, tension: 40, useNativeDriver: true })
+          Animated.timing(wpmAnim, {
+            toValue: 0.85,
+            duration: 100,
+            useNativeDriver: true,
+          }),
+          Animated.spring(wpmAnim, {
+            toValue: 1,
+            friction: 3,
+            tension: 40,
+            useNativeDriver: true,
+          }),
         ]).start();
       }, 250);
     } else {
@@ -1023,11 +1455,20 @@ export default function App() {
   const handleWpmLongPress = () => {
     wakeUpUi();
     setFavoriteWpm(wpm);
-    
+
     // Animate
     Animated.sequence([
-      Animated.timing(wpmAnim, { toValue: 1.15, duration: 150, useNativeDriver: true }),
-      Animated.spring(wpmAnim, { toValue: 1, friction: 3, tension: 40, useNativeDriver: true })
+      Animated.timing(wpmAnim, {
+        toValue: 1.15,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.spring(wpmAnim, {
+        toValue: 1,
+        friction: 3,
+        tension: 40,
+        useNativeDriver: true,
+      }),
     ]).start();
 
     setShowRing(true);
@@ -1043,7 +1484,7 @@ export default function App() {
 
   const nextChapter = () => {
     wakeUpUi();
-    const nextMarker = chapters.find(marker => marker.index > wordIndex);
+    const nextMarker = chapters.find((marker) => marker.index > wordIndex);
     if (nextMarker !== undefined) {
       setWordIndex(nextMarker.index);
     }
@@ -1074,7 +1515,7 @@ export default function App() {
     } else if (tutorialStep === 2 || tutorialStep === 3) {
       cardStyle = { top: 120 };
     } else {
-      cardStyle = { alignSelf: 'center' };
+      cardStyle = { alignSelf: "center" };
     }
 
     const stepsData = [
@@ -1102,7 +1543,7 @@ export default function App() {
         title: "Ready to Read!",
         desc: "You are all set to start reading! Enjoy your speed reading experience.",
         icon: "checkmark-circle",
-      }
+      },
     ];
 
     const currentStepData = stepsData[tutorialStep];
@@ -1127,15 +1568,64 @@ export default function App() {
         {/* Render Highlights */}
         {tutorialStep === 0 && (
           <View style={styles.highlightRsvp}>
-            <Animated.View style={[styles.tutorialHand, { transform: [{ translateX: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-40, 40, -40] }) }] }]}>
+            <Animated.View
+              style={[
+                styles.tutorialHand,
+                {
+                  transform: [
+                    {
+                      translateX: tutorialAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [-40, 40, -40],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
               <Ionicons name="hand-left" size={36} color={theme.accent} />
             </Animated.View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 20, position: 'absolute', top: '40%' }}>
-              <Animated.View style={{ transform: [{ translateX: tutorialAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -15] }) }] }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                width: "100%",
+                paddingHorizontal: 20,
+                position: "absolute",
+                top: "40%",
+              }}
+            >
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      translateX: tutorialAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -15],
+                      }),
+                    },
+                  ],
+                }}
+              >
                 <Ionicons name="chevron-back" size={24} color={theme.accent} />
               </Animated.View>
-              <Animated.View style={{ transform: [{ translateX: tutorialAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 15] }) }] }}>
-                <Ionicons name="chevron-forward" size={24} color={theme.accent} />
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      translateX: tutorialAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 15],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <Ionicons
+                  name="chevron-forward"
+                  size={24}
+                  color={theme.accent}
+                />
               </Animated.View>
             </View>
           </View>
@@ -1143,12 +1633,25 @@ export default function App() {
 
         {tutorialStep === 1 && (
           <View style={styles.highlightRsvp}>
-            <Animated.View style={[styles.tutorialHand, { 
-              transform: [
-                { scale: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.8, 1.1] }) }
-              ],
-              opacity: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.6, 1, 0.6] })
-            }]}>
+            <Animated.View
+              style={[
+                styles.tutorialHand,
+                {
+                  transform: [
+                    {
+                      scale: tutorialAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 0.8, 1.1],
+                      }),
+                    },
+                  ],
+                  opacity: tutorialAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.6, 1, 0.6],
+                  }),
+                },
+              ]}
+            >
               <Ionicons name="hand-left" size={36} color={theme.accent} />
             </Animated.View>
           </View>
@@ -1156,12 +1659,22 @@ export default function App() {
 
         {tutorialStep === 2 && (
           <View style={[styles.highlightWpm, { left: width / 2 - 75 }]}>
-            <Animated.View style={[styles.tutorialHand, { 
-              top: 30,
-              transform: [
-                { scale: tutorialAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.9, 1.1] }) }
-              ]
-            }]}>
+            <Animated.View
+              style={[
+                styles.tutorialHand,
+                {
+                  top: 30,
+                  transform: [
+                    {
+                      scale: tutorialAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 0.9, 1.1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
               <Ionicons name="hand-left" size={28} color={theme.accent} />
             </Animated.View>
           </View>
@@ -1177,13 +1690,20 @@ export default function App() {
         {/* Tutorial Instruction Card */}
         <View style={[styles.tutorialCard, cardStyle]}>
           {tutorialStep < 4 && (
-            <TouchableOpacity style={styles.tutorialSkipButton} onPress={handleSkip}>
+            <TouchableOpacity
+              style={styles.tutorialSkipButton}
+              onPress={handleSkip}
+            >
               <Text style={styles.tutorialSkipText}>Skip</Text>
             </TouchableOpacity>
           )}
 
           <View style={styles.tutorialHeaderIcon}>
-            <Ionicons name={currentStepData.icon} size={36} color={theme.accent} />
+            <Ionicons
+              name={currentStepData.icon}
+              size={36}
+              color={theme.accent}
+            />
           </View>
 
           <Text style={styles.tutorialTitle}>{currentStepData.title}</Text>
@@ -1192,27 +1712,42 @@ export default function App() {
           {/* Progress Dots */}
           <View style={styles.tutorialDotsContainer}>
             {stepsData.map((_, i) => (
-              <View 
-                key={i} 
+              <View
+                key={i}
                 style={[
-                  styles.tutorialDot, 
-                  i === tutorialStep ? styles.tutorialDotActive : styles.tutorialDotInactive
-                ]} 
+                  styles.tutorialDot,
+                  i === tutorialStep
+                    ? styles.tutorialDotActive
+                    : styles.tutorialDotInactive,
+                ]}
               />
             ))}
           </View>
 
           {/* Don't Show Again Checkbox */}
           {tutorialStep === 4 && (
-            <TouchableOpacity 
-              style={styles.checkboxContainer} 
+            <TouchableOpacity
+              style={styles.checkboxContainer}
               activeOpacity={0.8}
               onPress={() => setDontShowAgainChecked(!dontShowAgainChecked)}
             >
-              <View style={[styles.checkbox, dontShowAgainChecked && styles.checkboxChecked]}>
-                {dontShowAgainChecked && <Ionicons name="checkmark" size={14} color={theme.textOnAccent} />}
+              <View
+                style={[
+                  styles.checkbox,
+                  dontShowAgainChecked && styles.checkboxChecked,
+                ]}
+              >
+                {dontShowAgainChecked && (
+                  <Ionicons
+                    name="checkmark"
+                    size={14}
+                    color={theme.textOnAccent}
+                  />
+                )}
               </View>
-              <Text style={styles.checkboxLabel}>Don't show this tutorial again</Text>
+              <Text style={styles.checkboxLabel}>
+                Don&apos;t show this tutorial again
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -1232,20 +1767,22 @@ export default function App() {
     const leftPart = currentWord.slice(0, midIdx);
     const centerLetter = currentWord.charAt(midIdx);
     const rightPart = currentWord.slice(midIdx + 1);
-    
+
     const isDialogue = !!dialogueFlags[wordIndex];
     const spaceFontSize = fontSize * 0.15;
     const spaceWidth = isDialogue ? spaceFontSize * 0.6 : 0;
     const guideOffset = fontSize * 0.55 + 16;
-    
+
     // Find current chapter
-    const currentChapter = [...chapters].reverse().find(marker => marker.index <= wordIndex) || chapters[0];
-    const chapterTitle = currentChapter ? currentChapter.title : '';
+    const currentChapter =
+      [...chapters].reverse().find((marker) => marker.index <= wordIndex) ||
+      chapters[0];
+    const chapterTitle = currentChapter ? currentChapter.title : "";
 
     return (
       <SafeAreaView style={styles.readerContainer}>
         <StatusBar hidden />
-        
+
         {/* Top Bar */}
         <Animated.View style={[styles.topBar, { opacity: uiOpacityAnim }]}>
           <View style={styles.leftSideArea}>
@@ -1255,40 +1792,106 @@ export default function App() {
           </View>
 
           <View style={styles.titleContainer}>
-            <Text style={styles.bookTitle} numberOfLines={2}>{currentBook.name.replace(/\.[^/.]+$/, "")}</Text>
-            {chapterTitle ? <Text style={styles.chapterTitle} numberOfLines={1}>{chapterTitle}</Text> : null}
+            <Text style={styles.bookTitle} numberOfLines={2}>
+              {currentBook.name.replace(/\.[^/.]+$/, "")}
+            </Text>
+            {chapterTitle ? (
+              <Text style={styles.chapterTitle} numberOfLines={1}>
+                {chapterTitle}
+              </Text>
+            ) : null}
           </View>
 
           <View style={styles.fontControls}>
-            <TouchableOpacity onPress={decreaseFontSize} style={styles.fontButton}>
+            <TouchableOpacity
+              onPress={decreaseFontSize}
+              style={styles.fontButton}
+            >
               <Text style={styles.fontButtonText}>A-</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={increaseFontSize} style={styles.fontButton}>
+            <TouchableOpacity
+              onPress={increaseFontSize}
+              style={styles.fontButton}
+            >
               <Text style={styles.fontButtonText}>A+</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
 
         {/* RSVP Display */}
-        <View style={styles.rsvpContainer} {...panResponder.panHandlers} clipChildren={false}>
+        <View
+          style={styles.rsvpContainer}
+          {...panResponder.panHandlers}
+          clipChildren={false}
+        >
           {/* Guide lines for the eye */}
-          <View style={[styles.guideLineTop, { transform: [{ translateY: -guideOffset }] }]} />
-          <View style={[styles.guideLineBottom, { transform: [{ translateY: guideOffset }] }]} />
+          <View
+            style={[
+              styles.guideLineTop,
+              { transform: [{ translateY: -guideOffset }] },
+            ]}
+          />
+          <View
+            style={[
+              styles.guideLineBottom,
+              { transform: [{ translateY: guideOffset }] },
+            ]}
+          />
 
           {/* Scrub Indicators */}
           {scrubStatus.active && (
-            <Animated.View style={[styles.scrubIndicatorContainer, { opacity: pulseAnim }]}>
+            <Animated.View
+              style={[styles.scrubIndicatorContainer, { opacity: pulseAnim }]}
+            >
               {scrubStatus.direction === -1 ? (
                 <>
-                  <Ionicons name="chevron-back" size={80} color={theme.accent} style={styles.scrubArrow} />
-                  {scrubStatus.level >= 2 && <Ionicons name="chevron-back" size={80} color={theme.accent} style={styles.scrubArrow} />}
-                  {scrubStatus.level >= 3 && <Ionicons name="chevron-back" size={80} color={theme.accent} style={styles.scrubArrow} />}
+                  <Ionicons
+                    name="chevron-back"
+                    size={80}
+                    color={theme.accent}
+                    style={styles.scrubArrow}
+                  />
+                  {scrubStatus.level >= 2 && (
+                    <Ionicons
+                      name="chevron-back"
+                      size={80}
+                      color={theme.accent}
+                      style={styles.scrubArrow}
+                    />
+                  )}
+                  {scrubStatus.level >= 3 && (
+                    <Ionicons
+                      name="chevron-back"
+                      size={80}
+                      color={theme.accent}
+                      style={styles.scrubArrow}
+                    />
+                  )}
                 </>
               ) : (
                 <>
-                  {scrubStatus.level >= 3 && <Ionicons name="chevron-forward" size={80} color={theme.accent} style={styles.scrubArrow} />}
-                  {scrubStatus.level >= 2 && <Ionicons name="chevron-forward" size={80} color={theme.accent} style={styles.scrubArrow} />}
-                  <Ionicons name="chevron-forward" size={80} color={theme.accent} style={styles.scrubArrow} />
+                  {scrubStatus.level >= 3 && (
+                    <Ionicons
+                      name="chevron-forward"
+                      size={80}
+                      color={theme.accent}
+                      style={styles.scrubArrow}
+                    />
+                  )}
+                  {scrubStatus.level >= 2 && (
+                    <Ionicons
+                      name="chevron-forward"
+                      size={80}
+                      color={theme.accent}
+                      style={styles.scrubArrow}
+                    />
+                  )}
+                  <Ionicons
+                    name="chevron-forward"
+                    size={80}
+                    color={theme.accent}
+                    style={styles.scrubArrow}
+                  />
                 </>
               )}
             </Animated.View>
@@ -1296,99 +1899,212 @@ export default function App() {
 
           {/* Chapter Popup Animation (outside of word fade) */}
           {chapterPopup.visible && (
-            <Animated.View style={[
-              StyleSheet.absoluteFillObject,
-              {
-                justifyContent: 'center',
-                alignItems: 'center',
-                pointerEvents: 'none',
-                zIndex: 20,
-                opacity: chapterPopupAnim.interpolate({
-                  inputRange: [0, 0.2, 0.8, 1],
-                  outputRange: [0, 1, 1, 0]
-                }),
-                transform: [{
-                  translateY: chapterPopupAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -150]
-                  })
-                }]
-              }
-            ]}>
-              <Text style={{
-                color: theme.accent,
-                fontSize: 24,
-                fontWeight: 'bold',
-                textAlign: 'center',
-                textShadowColor: 'rgba(0,0,0,0.5)',
-                textShadowOffset: { width: 0, height: 2 },
-                textShadowRadius: 4,
-              }}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  justifyContent: "center",
+                  alignItems: "center",
+                  pointerEvents: "none",
+                  zIndex: 20,
+                  opacity: chapterPopupAnim.interpolate({
+                    inputRange: [0, 0.2, 0.8, 1],
+                    outputRange: [0, 1, 1, 0],
+                  }),
+                  transform: [
+                    {
+                      translateY: chapterPopupAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -150],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: theme.accent,
+                  fontSize: 24,
+                  fontWeight: "bold",
+                  textAlign: "center",
+                  textShadowColor: "rgba(0,0,0,0.5)",
+                  textShadowOffset: { width: 0, height: 2 },
+                  textShadowRadius: 4,
+                }}
+              >
                 {chapterPopup.title}
               </Text>
             </Animated.View>
           )}
-          
-          <Animated.View style={{ opacity: wordFadeAnim, flex: 1, justifyContent: 'center' }} clipChildren={false}>
+
+          <Animated.View
+            style={{ opacity: wordFadeAnim, flex: 1, justifyContent: "center" }}
+            clipChildren={false}
+          >
             {showContext && (
-              <Animated.View pointerEvents="none" style={[
-                styles.contextContainer,
-                {
-                  opacity: contextAnim,
-                  transform: [
-                    { scale: contextAnim.interpolate({ inputRange: [0, 1], outputRange: [2.5, 1] }) }
-                  ]
-                }
-              ]}>
-                <Text style={[styles.contextText, { fontSize: Math.max(16, fontSize * 0.4) }]}>
-                  {words.slice(Math.max(0, wordIndex - 30), wordIndex).join(' ')}{' '}
-                  <Text style={{ color: theme.accent, fontWeight: 'bold' }}>{words[wordIndex]}</Text>{' '}
-                  {words.slice(wordIndex + 1, Math.min(words.length, wordIndex + 30)).join(' ')}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.contextContainer,
+                  {
+                    opacity: contextAnim,
+                    transform: [
+                      {
+                        scale: contextAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [2.5, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.contextText,
+                    { fontSize: Math.max(16, fontSize * 0.4) },
+                  ]}
+                >
+                  {words
+                    .slice(Math.max(0, wordIndex - 30), wordIndex)
+                    .join(" ")}{" "}
+                  <Text style={{ color: theme.accent, fontWeight: "bold" }}>
+                    {words[wordIndex]}
+                  </Text>{" "}
+                  {words
+                    .slice(
+                      wordIndex + 1,
+                      Math.min(words.length, wordIndex + 30),
+                    )
+                    .join(" ")}
                 </Text>
               </Animated.View>
             )}
 
-            <Animated.View style={[styles.wordWrapper, { opacity: wordWrapperAnim, transform: [{ scale: wordWrapperAnim.interpolate({ inputRange: [0, 1], outputRange: [1.5, 1] }) }] }]} clipChildren={false}>
-              <View style={[styles.leftPartContainer, isDialogue && leftPart ? { transform: [{ translateX: spaceWidth }] } : null]} clipChildren={false}>
-                <Text style={[styles.wordText, { fontSize }, isDialogue && { fontStyle: 'italic', color: theme.textLight }]}>
-                  {isDialogue && !!leftPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+            <Animated.View
+              style={[
+                styles.wordWrapper,
+                {
+                  opacity: wordWrapperAnim,
+                  transform: [
+                    {
+                      scale: wordWrapperAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1.5, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+              clipChildren={false}
+            >
+              <View
+                style={[
+                  styles.leftPartContainer,
+                  isDialogue && leftPart
+                    ? { transform: [{ translateX: spaceWidth }] }
+                    : null,
+                ]}
+                clipChildren={false}
+              >
+                <Text
+                  style={[
+                    styles.wordText,
+                    { fontSize },
+                    isDialogue && {
+                      fontStyle: "italic",
+                      color: theme.textLight,
+                    },
+                  ]}
+                >
+                  {isDialogue && !!leftPart && (
+                    <Text style={{ fontSize: spaceFontSize }}> </Text>
+                  )}
                   {leftPart}
-                  {isDialogue && !!leftPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                  {isDialogue && !!leftPart && (
+                    <Text style={{ fontSize: spaceFontSize }}> </Text>
+                  )}
                 </Text>
               </View>
               <View style={styles.centerPartContainer} clipChildren={false}>
-                <Text style={[styles.wordText, styles.redLetter, { fontSize }, isDialogue && { fontStyle: 'italic', color: theme.accent }]}>
-                  {isDialogue && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                <Text
+                  style={[
+                    styles.wordText,
+                    styles.redLetter,
+                    { fontSize },
+                    isDialogue && { fontStyle: "italic", color: theme.accent },
+                  ]}
+                >
+                  {isDialogue && (
+                    <Text style={{ fontSize: spaceFontSize }}> </Text>
+                  )}
                   {centerLetter}
-                  {isDialogue && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                  {isDialogue && (
+                    <Text style={{ fontSize: spaceFontSize }}> </Text>
+                  )}
                 </Text>
               </View>
-              <View style={[styles.rightPartContainer, isDialogue && rightPart ? { transform: [{ translateX: -spaceWidth }] } : null]} clipChildren={false}>
-                <Text style={[styles.wordText, { fontSize }, isDialogue && { fontStyle: 'italic', color: theme.textLight }]}>
-                  {isDialogue && !!rightPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+              <View
+                style={[
+                  styles.rightPartContainer,
+                  isDialogue && rightPart
+                    ? { transform: [{ translateX: -spaceWidth }] }
+                    : null,
+                ]}
+                clipChildren={false}
+              >
+                <Text
+                  style={[
+                    styles.wordText,
+                    { fontSize },
+                    isDialogue && {
+                      fontStyle: "italic",
+                      color: theme.textLight,
+                    },
+                  ]}
+                >
+                  {isDialogue && !!rightPart && (
+                    <Text style={{ fontSize: spaceFontSize }}> </Text>
+                  )}
                   {rightPart}
-                  {isDialogue && !!rightPart && <Text style={{ fontSize: spaceFontSize }}> </Text>}
+                  {isDialogue && !!rightPart && (
+                    <Text style={{ fontSize: spaceFontSize }}> </Text>
+                  )}
                 </Text>
               </View>
             </Animated.View>
           </Animated.View>
-          
-          <Animated.Text style={[styles.progressText, { opacity: uiOpacityAnim }]}>
-            {wordIndex + 1} / {words.length} ({words.length > 0 ? Math.round(((wordIndex + 1) / words.length) * 100) : 0}%)
+
+          <Animated.Text
+            style={[styles.progressText, { opacity: uiOpacityAnim }]}
+          >
+            {wordIndex + 1} / {words.length} (
+            {words.length > 0
+              ? Math.round(((wordIndex + 1) / words.length) * 100)
+              : 0}
+            %)
           </Animated.Text>
         </View>
 
         {/* Controls */}
-        <Animated.View style={[styles.controlsContainer, { opacity: uiOpacityAnim }]}>
-          <TouchableOpacity 
+        <Animated.View
+          style={[styles.controlsContainer, { opacity: uiOpacityAnim }]}
+        >
+          <TouchableOpacity
             activeOpacity={0.8}
             onPress={handleWpmPress}
             onLongPress={handleWpmLongPress}
             delayLongPress={400}
           >
-            <Animated.View style={[styles.speedControls, { transform: [{ scale: wpmAnim }] }]}>
+            <Animated.View
+              style={[
+                styles.speedControls,
+                { transform: [{ scale: wpmAnim }] },
+              ]}
+            >
               {showRing && (
-                <Animated.View 
+                <Animated.View
                   style={[
                     StyleSheet.absoluteFill,
                     {
@@ -1397,20 +2113,22 @@ export default function App() {
                       borderColor: theme.accent,
                       opacity: ringAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [1, 0]
+                        outputRange: [1, 0],
                       }),
-                      transform: [{
-                        scale: ringAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1.8]
-                        })
-                      }]
-                    }
-                  ]} 
+                      transform: [
+                        {
+                          scale: ringAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.8],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
                 />
               )}
               {showRestoreRing && (
-                <Animated.View 
+                <Animated.View
                   style={[
                     StyleSheet.absoluteFill,
                     {
@@ -1419,29 +2137,35 @@ export default function App() {
                       borderColor: theme.accent,
                       opacity: restoreRingAnim.interpolate({
                         inputRange: [0, 0.8, 1],
-                        outputRange: [0, 1, 0]
+                        outputRange: [0, 1, 0],
                       }),
-                      transform: [{
-                        scale: restoreRingAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1.8, 1]
-                        })
-                      }]
-                    }
-                  ]} 
+                      transform: [
+                        {
+                          scale: restoreRingAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1.8, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
                 />
               )}
               <Text style={styles.wpmText}>{wpm} WPM</Text>
             </Animated.View>
           </TouchableOpacity>
-          
+
           <View style={styles.playbackControls}>
             <TouchableOpacity onPress={decreaseWpm} style={styles.iconButton}>
               <Ionicons name="remove" size={40} color={theme.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={togglePlay} style={styles.playButton}>
-              <Ionicons name={isPlaying ? "pause" : "play"} size={48} color={theme.textMuted} />
+              <Ionicons
+                name={isPlaying ? "pause" : "play"}
+                size={48}
+                color={theme.textMuted}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={increaseWpm} style={styles.iconButton}>
@@ -1450,11 +2174,25 @@ export default function App() {
           </View>
 
           <View style={styles.chapterControls}>
-            <TouchableOpacity onPress={prevChapter} style={styles.chapterButton}>
-              <Ionicons name="play-skip-back" size={24} color={theme.textMuted} />
+            <TouchableOpacity
+              onPress={prevChapter}
+              style={styles.chapterButton}
+            >
+              <Ionicons
+                name="play-skip-back"
+                size={24}
+                color={theme.textMuted}
+              />
             </TouchableOpacity>
-            <TouchableOpacity onPress={nextChapter} style={styles.chapterButton}>
-              <Ionicons name="play-skip-forward" size={24} color={theme.textMuted} />
+            <TouchableOpacity
+              onPress={nextChapter}
+              style={styles.chapterButton}
+            >
+              <Ionicons
+                name="play-skip-forward"
+                size={24}
+                color={theme.textMuted}
+              />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -1466,27 +2204,26 @@ export default function App() {
   return (
     <SafeAreaView style={styles.homeContainer}>
       <StatusBar barStyle="light-content" />
+      <LibraryBackground themeHue={themeHue} styles={styles} />
       <Pressable style={{ flex: 1 }} onPress={() => setActiveMenuBookId(null)}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Centread</Text>
-          <TouchableOpacity style={styles.importButton} onPress={handleImport}>
-            <Ionicons name="add" size={24} color={theme.textOnAccent} />
-            <Text style={styles.importButtonText}>Import Books</Text>
-          </TouchableOpacity>
         </View>
 
         {books.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="book-outline" size={64} color={theme.textMuted} />
             <Text style={styles.emptyText}>Your library is empty.</Text>
-            <Text style={styles.emptySubText}>Tap the import button to select EPUB, PDF or TXT files.</Text>
+            <Text style={styles.emptySubText}>
+              Tap the import icon at the bottom dock to select EPUB, PDF or TXT files.
+            </Text>
           </View>
         ) : (
           <FlatList
             data={books}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
             numColumns={2}
-            contentContainerStyle={styles.gridList}
+            contentContainerStyle={[styles.gridList, { paddingBottom: 100 }]}
             onScrollBeginDrag={() => setActiveMenuBookId(null)}
             renderItem={({ item }) => (
               <BookCardItem
@@ -1504,48 +2241,91 @@ export default function App() {
         )}
       </Pressable>
 
-      {/* Theme Picker Button */}
+      {/* Bottom Floating Island Dock */}
       {!currentBook && (
-        <TouchableOpacity 
-          style={styles.themeFab}
-          onPress={() => setShowThemeModal(true)}
-        >
-          <Ionicons name="color-palette" size={28} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.floatingIslandContainer}>
+          <BlurView
+            intensity={10}
+            tint="default"
+            style={styles.floatingIslandBlur}
+          >
+            <View style={styles.floatingIslandInner}>
+              <View style={styles.islandLeft}>
+                <Text style={styles.islandTitle}>Centread</Text>
+                <View style={styles.islandDot} />
+                <Text style={styles.islandCount}>
+                  {books.length} {books.length === 1 ? "libro" : "libros"}
+                </Text>
+              </View>
+              
+              <View style={styles.islandRight}>
+                <TouchableOpacity
+                  style={styles.islandButton}
+                  onPress={handleImport}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add-outline" size={24} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.islandButton, { marginLeft: 12 }]}
+                  onPress={() => setShowThemeModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="color-palette-outline" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </BlurView>
+        </View>
       )}
 
       {showThemeModal && (
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowThemeModal(false)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowThemeModal(false)}
+        >
           <View style={styles.themeModalContent}>
             <Text style={styles.themeModalTitle}>Select Accent Color</Text>
             <View style={styles.hueGrid}>
-              {HUES.map(h => (
-                <TouchableOpacity 
+              {HUES.map((h) => (
+                <TouchableOpacity
                   key={h}
-                  style={[styles.hueCircle, { backgroundColor: `hsl(${h}, 100%, 63%)`, borderWidth: themeHue === h ? 3 : 0 }]}
+                  style={[
+                    styles.hueCircle,
+                    {
+                      backgroundColor: `hsl(${h}, 100%, 63%)`,
+                      borderWidth: themeHue === h ? 3 : 0,
+                    },
+                  ]}
                   onPress={() => setThemeHue(h)}
                 />
               ))}
             </View>
-            <Text style={[styles.themeModalTitle, { marginTop: 20, fontSize: 16 }]}>Custom Spectrum</Text>
-            <View style={{ width: '100%', height: 60 }}>
+            <Text
+              style={[styles.themeModalTitle, { marginTop: 20, fontSize: 16 }]}
+            >
+              Custom Spectrum
+            </Text>
+            <View style={{ width: "100%", height: 60 }}>
               <FlatList
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                data={Array.from({length: 36})}
+                data={Array.from({ length: 36 })}
                 keyExtractor={(_, i) => String(i)}
                 renderItem={({ index }) => {
                   const h = index * 10;
                   return (
-                    <TouchableOpacity 
-                      style={{ 
-                        width: 25, 
-                        height: 50, 
-                        backgroundColor: `hsl(${h}, 100%, 63%)`, 
-                        borderRadius: 6, 
-                        marginHorizontal: 4, 
-                        borderWidth: Math.abs(themeHue - h) <= 5 ? 2 : 0, 
-                        borderColor: '#fff' 
+                    <TouchableOpacity
+                      style={{
+                        width: 25,
+                        height: 50,
+                        backgroundColor: `hsl(${h}, 100%, 63%)`,
+                        borderRadius: 6,
+                        marginHorizontal: 4,
+                        borderWidth: Math.abs(themeHue - h) <= 5 ? 2 : 0,
+                        borderColor: "#fff",
                       }}
                       onPress={() => setThemeHue(h)}
                     />
@@ -1558,24 +2338,35 @@ export default function App() {
       )}
 
       {bookToDelete && (
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setBookToDelete(null)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setBookToDelete(null)}
+        >
           <View style={styles.deleteModalContent}>
-            <Ionicons name="trash-bin-outline" size={48} color={theme.accent} style={{ marginBottom: 16 }} />
+            <Ionicons
+              name="trash-bin-outline"
+              size={48}
+              color={theme.accent}
+              style={{ marginBottom: 16 }}
+            />
             <Text style={styles.deleteModalTitle}>¿Eliminar libro?</Text>
             <Text style={styles.deleteModalSub}>
-              ¿Estás seguro de que deseas eliminar "{bookToDelete.name.replace(/\.[^/.]+$/, "")}"? Esta acción no se puede deshacer.
+              ¿Estás seguro de que deseas eliminar &quot;
+              {bookToDelete.name.replace(/\.[^/.]+$/, "")}&quot;? Esta acción no
+              se puede deshacer.
             </Text>
-            
+
             <View style={styles.modalButtonGroup}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalCancelButton]} 
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
                 onPress={() => setBookToDelete(null)}
               >
                 <Text style={styles.modalCancelButtonText}>Cancelar</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalDeleteButton]} 
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalDeleteButton]}
                 onPress={executeDeleteBook}
               >
                 <Text style={styles.modalDeleteButtonText}>Eliminar</Text>
@@ -1588,634 +2379,706 @@ export default function App() {
   );
 }
 
-const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) => StyleSheet.create({
-  // --- Global ---
-  homeContainer: {
-    flex: 1,
-    backgroundColor: theme.bg,
-  },
-  readerContainer: {
-    flex: 1,
-    backgroundColor: theme.bg, // Pitch black for reading
-  },
-  
-  // --- Home Screen ---
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    marginTop: 20,
-  },
-  headerTitle: {
-    color: theme.accent,
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  importButton: {
-    flexDirection: 'row',
-    backgroundColor: theme.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    alignItems: 'center',
-  },
-  importButtonText: {
-    color: theme.textOnAccent,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  emptyText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
-  },
-  emptySubText: {
-    color: theme.textLight,
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  gridList: {
-    padding: 10,
-  },
-  bookCardContainer: {
-    flex: 1,
-    margin: 10,
-    height: 220,
-    position: 'relative',
-    zIndex: 1,
-  },
-  bookCard: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  bookCardInner: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  bookCardMenu: {
-    position: 'absolute',
-    bottom: -55,
-    left: 0,
-    right: 0,
-    height: 50,
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    zIndex: 100,
-  },
-  menuOption: {
-    flex: 1,
-    height: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  menuOptionText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  coverPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  bookCardTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  uploadCoverHint: {
-    color: theme.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  coverImageContainer: {
-    flex: 1,
-    width: '100%',
-  },
-  coverImage: {
-    flex: 1,
-    width: '100%',
-  },
-  coverTitleOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-  },
-  coverTitleOverlayText: {
-    color: '#fff',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  progressBadge: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: theme.accent,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  progressBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
+const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
+  StyleSheet.create({
+    // --- Global ---
+    backgroundContainer: {
+      ...StyleSheet.absoluteFillObject,
+      overflow: "hidden",
+      zIndex: -1,
+    },
+    glowCircle: {
+      position: "absolute",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    nestedGlow: {
+      position: "absolute",
+    },
+    homeContainer: {
+      flex: 1,
+      backgroundColor: theme.bg,
+    },
+    readerContainer: {
+      flex: 1,
+      backgroundColor: theme.bg, // Pitch black for reading
+    },
 
-  // --- Reader Screen ---
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  leftSideArea: {
-    width: 88,
-    alignItems: 'flex-start',
-  },
-  titleContainer: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    marginTop: 4, // Aligns text slightly lower to match icons
-  },
-  backButton: {
-    padding: 4,
-  },
-  bookTitle: {
-    color: theme.textLight,
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  chapterTitle: {
-    color: theme.textMuted,
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginTop: 28,
-  },
-  fontControls: {
-    width: 88,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  fontButton: {
-    width: 40,
-    height: 40,
-    marginLeft: 8,
-    backgroundColor: theme.bg,
-    borderColor: theme.accent,
-    borderWidth: 2,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fontButtonText: {
-    color: '#777',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  rsvpContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'visible',
-  },
-  guideLineTop: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -10,
-    width: 2,
-    height: 20,
-    backgroundColor: theme.textDark,
-  },
-  guideLineBottom: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -10,
-    width: 2,
-    height: 20,
-    backgroundColor: theme.textDark,
-  },
-  scrubIndicatorContainer: {
-    position: 'absolute',
-    top: '20%',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  scrubArrow: {
-    marginHorizontal: -25,
-  },
-  wordWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    overflow: 'visible',
-  },
-  leftPartContainer: {
-    flex: 1,
-    alignItems: 'flex-end',
-    overflow: 'visible',
-  },
-  centerPartContainer: {
-    alignItems: 'center',
-    overflow: 'visible',
-  },
-  rightPartContainer: {
-    flex: 1,
-    alignItems: 'flex-start',
-    overflow: 'visible',
-  },
-  wordText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontFamily: 'monospace', // Monospace helps alignment significantly
-  },
-  redLetter: {
-    color: theme.accent,
-  },
-  progressText: {
-    position: 'absolute',
-    bottom: 40,
-    color: theme.textMuted,
-    fontSize: 14,
-  },
-  controlsContainer: {
-    paddingBottom: 40,
-    alignItems: 'center',
-  },
-  speedControls: {
-    marginBottom: 20,
-    backgroundColor: '#1e1e1e',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  wpmText: {
-    color: '#777',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  playbackControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  iconButton: {
-    width: 64,
-    height: 64,
-    backgroundColor: theme.bg,
-    borderColor: theme.accent,
-    borderWidth: 2,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 16,
-  },
-  playButton: {
-    width: 80,
-    height: 80,
-    backgroundColor: theme.bg,
-    borderColor: theme.accent,
-    borderWidth: 2,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 16,
-  },
-  chapterControls: {
-    flexDirection: 'row',
-    marginTop: 20,
-    width: '60%',
-    justifyContent: 'space-between',
-  },
-  chapterButton: {
-    width: 56,
-    height: 56,
-    backgroundColor: theme.bg,
-    borderColor: theme.accent,
-    borderWidth: 2,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  themeFab: {
-    position: 'absolute',
-    bottom: 30,
-    right: 30,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: theme.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  themeModalContent: {
-    backgroundColor: theme.surface,
-    padding: 24,
-    borderRadius: 20,
-    width: '80%',
-    alignItems: 'center',
-  },
-  themeModalTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  hueGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  hueCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    margin: 8,
-    borderColor: '#fff',
-  },
-  contextContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    zIndex: 10,
-    backgroundColor: theme.bg,
-  },
-  contextText: {
-    color: theme.textLight,
-    textAlign: 'center',
-    lineHeight: 32,
-  },
-  deleteModalContent: {
-    backgroundColor: theme.surface,
-    padding: 24,
-    borderRadius: 20,
-    width: '85%',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  deleteModalTitle: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  deleteModalSub: {
-    color: theme.textMuted,
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  modalButtonGroup: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCancelButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  modalCancelButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalDeleteButton: {
-    backgroundColor: theme.accent,
-  },
-  modalDeleteButtonText: {
-    color: theme.textOnAccent,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  // --- Tutorial Overlay ---
-  tutorialOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    zIndex: 1000,
-    justifyContent: 'center',
-  },
-  highlightRsvp: {
-    position: 'absolute',
-    top: '38%',
-    height: '24%',
-    left: '5%',
-    right: '5%',
-    borderWidth: 2,
-    borderColor: theme.accent,
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  highlightWpm: {
-    position: 'absolute',
-    bottom: (insets.bottom || 0) + 214,
-    height: 40,
-    width: 130,
-    borderWidth: 2,
-    borderColor: theme.accent,
-    borderStyle: 'dashed',
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  highlightTopBar: {
-    position: 'absolute',
-    top: (insets.top || 0) + 8,
-    left: '4%',
-    right: '4%',
-    height: 64,
-    borderWidth: 2,
-    borderColor: theme.accent,
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  highlightControls: {
-    position: 'absolute',
-    bottom: (insets.bottom || 0) + 16,
-    left: '10%',
-    right: '10%',
-    height: 195,
-    borderWidth: 2,
-    borderColor: theme.accent,
-    borderStyle: 'dashed',
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  tutorialHand: {
-    position: 'absolute',
-    top: '30%',
-    alignSelf: 'center',
-    zIndex: 15,
-  },
-  tutorialCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 20,
-    padding: 24,
-    width: '85%',
-    alignSelf: 'center',
-    position: 'absolute',
-    alignItems: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  tutorialSkipButton: {
-    position: 'absolute',
-    top: 16,
-    right: 20,
-    padding: 4,
-  },
-  tutorialSkipText: {
-    color: theme.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tutorialHeaderIcon: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  tutorialTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  tutorialText: {
-    color: theme.textLight,
-    fontSize: 14,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  tutorialDotsContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tutorialDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginHorizontal: 4,
-  },
-  tutorialDotActive: {
-    backgroundColor: theme.accent,
-    width: 18,
-  },
-  tutorialDotInactive: {
-    backgroundColor: theme.textDark,
-  },
-  tutorialButton: {
-    backgroundColor: theme.accent,
-    width: '100%',
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tutorialButtonText: {
-    color: theme.textOnAccent,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  checkboxContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    alignSelf: 'center',
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: theme.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  checkboxChecked: {
-    backgroundColor: theme.accent,
-  },
-  checkboxLabel: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-  }
-});
+    // --- Home Screen ---
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 20,
+      marginTop: 20,
+    },
+    headerTitle: {
+      color: theme.accent,
+      fontSize: 32,
+      fontWeight: "bold",
+    },
+    importButton: {
+      flexDirection: "row",
+      backgroundColor: theme.accent,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 20,
+      alignItems: "center",
+    },
+    importButtonText: {
+      color: theme.textOnAccent,
+      fontWeight: "600",
+      marginLeft: 4,
+    },
+    emptyState: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 40,
+    },
+    emptyText: {
+      color: "#fff",
+      fontSize: 20,
+      fontWeight: "600",
+      marginTop: 16,
+    },
+    emptySubText: {
+      color: theme.textLight,
+      fontSize: 16,
+      textAlign: "center",
+      marginTop: 8,
+    },
+    gridList: {
+      padding: 10,
+    },
+    bookCardContainer: {
+      flex: 1,
+      maxWidth: "50%",
+      margin: 10,
+      height: 220,
+      position: "relative",
+      zIndex: 1,
+    },
+    bookCard: {
+      width: "100%",
+      height: "100%",
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.08)",
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOpacity: 0.2,
+      shadowRadius: 5,
+      shadowOffset: { width: 0, height: 2 },
+    },
+    bookCardInner: {
+      flex: 1,
+      borderRadius: 12,
+      overflow: "hidden",
+    },
+    bookCardMenu: {
+      position: "absolute",
+      bottom: -55,
+      left: 0,
+      right: 0,
+      height: 50,
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      elevation: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.4,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 3 },
+      zIndex: 100,
+    },
+    menuOption: {
+      flex: 1,
+      height: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+    },
+    menuOptionText: {
+      color: "#fff",
+      fontSize: 12,
+      fontWeight: "bold",
+    },
+    coverPlaceholder: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+      backgroundColor: "rgba(255, 255, 255, 0.01)",
+    },
+    bookCardTitle: {
+      color: "#fff",
+      fontSize: 16,
+      fontWeight: "500",
+      textAlign: "center",
+      marginTop: 12,
+    },
+    uploadCoverHint: {
+      color: theme.textMuted,
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: 8,
+    },
+    coverImageContainer: {
+      flex: 1,
+      width: "100%",
+    },
+    coverImage: {
+      flex: 1,
+      width: "100%",
+    },
+    coverTitleOverlay: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      paddingVertical: 8,
+      paddingHorizontal: 6,
+    },
+    coverTitleOverlayText: {
+      color: "#fff",
+      fontSize: 12,
+      textAlign: "center",
+    },
+    progressBadge: {
+      position: "absolute",
+      bottom: 8,
+      right: 8,
+      backgroundColor: theme.accent,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    progressBadgeText: {
+      color: "#fff",
+      fontSize: 12,
+      fontWeight: "bold",
+    },
+
+    // --- Reader Screen ---
+    topBar: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingTop: 20,
+      paddingBottom: 8,
+    },
+    leftSideArea: {
+      width: 88,
+      alignItems: "flex-start",
+    },
+    titleContainer: {
+      flex: 1,
+      alignItems: "center",
+      paddingHorizontal: 10,
+      marginTop: 4, // Aligns text slightly lower to match icons
+    },
+    backButton: {
+      padding: 4,
+    },
+    bookTitle: {
+      color: theme.textLight,
+      fontSize: 16,
+      textAlign: "center",
+    },
+    chapterTitle: {
+      color: theme.textMuted,
+      fontSize: 18,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginTop: 28,
+    },
+    fontControls: {
+      width: 88,
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+    },
+    fontButton: {
+      width: 40,
+      height: 40,
+      marginLeft: 8,
+      backgroundColor: theme.bg,
+      borderColor: theme.accent,
+      borderWidth: 2,
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    fontButtonText: {
+      color: "#777",
+      fontSize: 16,
+      fontWeight: "bold",
+    },
+    rsvpContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      overflow: "visible",
+    },
+    guideLineTop: {
+      position: "absolute",
+      top: "50%",
+      marginTop: -10,
+      width: 2,
+      height: 20,
+      backgroundColor: theme.textDark,
+    },
+    guideLineBottom: {
+      position: "absolute",
+      top: "50%",
+      marginTop: -10,
+      width: 2,
+      height: 20,
+      backgroundColor: theme.textDark,
+    },
+    scrubIndicatorContainer: {
+      position: "absolute",
+      top: "20%",
+      alignSelf: "center",
+      flexDirection: "row",
+      alignItems: "center",
+      zIndex: 10,
+    },
+    scrubArrow: {
+      marginHorizontal: -25,
+    },
+    wordWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      width: "100%",
+      overflow: "visible",
+    },
+    leftPartContainer: {
+      flex: 1,
+      alignItems: "flex-end",
+      overflow: "visible",
+    },
+    centerPartContainer: {
+      alignItems: "center",
+      overflow: "visible",
+    },
+    rightPartContainer: {
+      flex: 1,
+      alignItems: "flex-start",
+      overflow: "visible",
+    },
+    wordText: {
+      color: "#fff",
+      fontWeight: "bold",
+      fontFamily: "monospace", // Monospace helps alignment significantly
+    },
+    redLetter: {
+      color: theme.accent,
+    },
+    progressText: {
+      position: "absolute",
+      bottom: 40,
+      color: theme.textMuted,
+      fontSize: 14,
+    },
+    controlsContainer: {
+      paddingBottom: 40,
+      alignItems: "center",
+    },
+    speedControls: {
+      marginBottom: 20,
+      backgroundColor: "#1e1e1e",
+      paddingHorizontal: 20,
+      paddingVertical: 8,
+      borderRadius: 20,
+    },
+    wpmText: {
+      color: "#777",
+      fontSize: 18,
+      fontWeight: "bold",
+    },
+    playbackControls: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "100%",
+    },
+    iconButton: {
+      width: 64,
+      height: 64,
+      backgroundColor: theme.bg,
+      borderColor: theme.accent,
+      borderWidth: 2,
+      borderRadius: 32,
+      justifyContent: "center",
+      alignItems: "center",
+      marginHorizontal: 16,
+    },
+    playButton: {
+      width: 80,
+      height: 80,
+      backgroundColor: theme.bg,
+      borderColor: theme.accent,
+      borderWidth: 2,
+      borderRadius: 40,
+      justifyContent: "center",
+      alignItems: "center",
+      marginHorizontal: 16,
+    },
+    chapterControls: {
+      flexDirection: "row",
+      marginTop: 20,
+      width: "60%",
+      justifyContent: "space-between",
+    },
+    chapterButton: {
+      width: 56,
+      height: 56,
+      backgroundColor: theme.bg,
+      borderColor: theme.accent,
+      borderWidth: 2,
+      borderRadius: 28,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    floatingIslandContainer: {
+      position: "absolute",
+      bottom: 30,
+      left: 20,
+      right: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    },
+    floatingIslandBlur: {
+      borderRadius: 30,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.08)",
+      borderTopColor: "rgba(255, 255, 255, 0.20)",  // Rim light highlight
+      borderLeftColor: "rgba(255, 255, 255, 0.15)",
+      borderRightColor: "rgba(255, 255, 255, 0.15)",
+      borderBottomColor: "rgba(255, 255, 255, 0.05)",
+      backgroundColor: "rgba(255, 255, 255, 0.04)", // Liquid glass background
+      elevation: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    floatingIslandInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 22,
+      paddingVertical: 14,
+      width: "100%",
+    },
+    islandLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    islandTitle: {
+      color: "#fff",
+      fontSize: 16,
+      fontWeight: "bold",
+      letterSpacing: 0.3,
+    },
+    islandDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: theme.accent, // Dynamic accent dot!
+      marginHorizontal: 8,
+    },
+    islandCount: {
+      color: theme.textLight,
+      fontSize: 13,
+      fontWeight: "500",
+    },
+    islandRight: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    islandButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.1)",
+      borderTopColor: "rgba(255, 255, 255, 0.18)",
+    },
+    modalOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 100,
+    },
+    themeModalContent: {
+      backgroundColor: theme.surface,
+      padding: 24,
+      borderRadius: 20,
+      width: "80%",
+      alignItems: "center",
+    },
+    themeModalTitle: {
+      color: "#fff",
+      fontSize: 20,
+      fontWeight: "bold",
+      marginBottom: 20,
+    },
+    hueGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+    },
+    hueCircle: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      margin: 8,
+      borderColor: "#fff",
+    },
+    contextContainer: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+      zIndex: 10,
+      backgroundColor: theme.bg,
+    },
+    contextText: {
+      color: theme.textLight,
+      textAlign: "center",
+      lineHeight: 32,
+    },
+    deleteModalContent: {
+      backgroundColor: theme.surface,
+      padding: 24,
+      borderRadius: 20,
+      width: "85%",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.08)",
+    },
+    deleteModalTitle: {
+      color: "#fff",
+      fontSize: 22,
+      fontWeight: "bold",
+      marginBottom: 10,
+    },
+    deleteModalSub: {
+      color: theme.textMuted,
+      fontSize: 14,
+      textAlign: "center",
+      lineHeight: 20,
+      marginBottom: 24,
+    },
+    modalButtonGroup: {
+      flexDirection: "row",
+      width: "100%",
+      gap: 12,
+    },
+    modalButton: {
+      flex: 1,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    modalCancelButton: {
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.1)",
+    },
+    modalCancelButtonText: {
+      color: "#fff",
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    modalDeleteButton: {
+      backgroundColor: theme.accent,
+    },
+    modalDeleteButtonText: {
+      color: theme.textOnAccent,
+      fontSize: 14,
+      fontWeight: "bold",
+    },
+    // --- Tutorial Overlay ---
+    tutorialOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.85)",
+      zIndex: 1000,
+      justifyContent: "center",
+    },
+    highlightRsvp: {
+      position: "absolute",
+      top: "38%",
+      height: "24%",
+      left: "5%",
+      right: "5%",
+      borderWidth: 2,
+      borderColor: theme.accent,
+      borderStyle: "dashed",
+      borderRadius: 12,
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
+    },
+    highlightWpm: {
+      position: "absolute",
+      bottom: (insets.bottom || 0) + 214,
+      height: 40,
+      width: 130,
+      borderWidth: 2,
+      borderColor: theme.accent,
+      borderStyle: "dashed",
+      borderRadius: 20,
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
+    },
+    highlightTopBar: {
+      position: "absolute",
+      top: (insets.top || 0) + 8,
+      left: "4%",
+      right: "4%",
+      height: 64,
+      borderWidth: 2,
+      borderColor: theme.accent,
+      borderStyle: "dashed",
+      borderRadius: 12,
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
+    },
+    highlightControls: {
+      position: "absolute",
+      bottom: (insets.bottom || 0) + 16,
+      left: "10%",
+      right: "10%",
+      height: 195,
+      borderWidth: 2,
+      borderColor: theme.accent,
+      borderStyle: "dashed",
+      borderRadius: 20,
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
+    },
+    tutorialHand: {
+      position: "absolute",
+      top: "30%",
+      alignSelf: "center",
+      zIndex: 15,
+    },
+    tutorialCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 20,
+      padding: 24,
+      width: "85%",
+      alignSelf: "center",
+      position: "absolute",
+      alignItems: "center",
+      elevation: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.08)",
+    },
+    tutorialSkipButton: {
+      position: "absolute",
+      top: 16,
+      right: 20,
+      padding: 4,
+    },
+    tutorialSkipText: {
+      color: theme.textMuted,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    tutorialHeaderIcon: {
+      width: 70,
+      height: 70,
+      borderRadius: 35,
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 16,
+    },
+    tutorialTitle: {
+      color: "#fff",
+      fontSize: 20,
+      fontWeight: "bold",
+      marginBottom: 10,
+      textAlign: "center",
+    },
+    tutorialText: {
+      color: theme.textLight,
+      fontSize: 14,
+      lineHeight: 22,
+      textAlign: "center",
+      marginBottom: 20,
+    },
+    tutorialDotsContainer: {
+      flexDirection: "row",
+      marginBottom: 20,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    tutorialDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginHorizontal: 4,
+    },
+    tutorialDotActive: {
+      backgroundColor: theme.accent,
+      width: 18,
+    },
+    tutorialDotInactive: {
+      backgroundColor: theme.textDark,
+    },
+    tutorialButton: {
+      backgroundColor: theme.accent,
+      width: "100%",
+      height: 48,
+      borderRadius: 24,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    tutorialButtonText: {
+      color: theme.textOnAccent,
+      fontSize: 16,
+      fontWeight: "bold",
+    },
+    checkboxContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 20,
+      alignSelf: "center",
+    },
+    checkbox: {
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      borderWidth: 2,
+      borderColor: theme.accent,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 10,
+    },
+    checkboxChecked: {
+      backgroundColor: theme.accent,
+    },
+    checkboxLabel: {
+      color: "#fff",
+      fontSize: 14,
+      fontWeight: "500",
+    },
+  });
