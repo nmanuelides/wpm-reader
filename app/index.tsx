@@ -2196,18 +2196,29 @@ export default function App() {
           </View>
 
           <View style={styles.fontControls}>
-            <TouchableOpacity
-              onPress={decreaseFontSize}
-              style={styles.fontButton}
+            <BlurView
+              intensity={10}
+              tint="default"
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.miniIslandBlur}
             >
-              <Text style={styles.fontButtonText}>A-</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={increaseFontSize}
-              style={styles.fontButton}
-            >
-              <Text style={styles.fontButtonText}>A+</Text>
-            </TouchableOpacity>
+              <View style={styles.miniIslandInner}>
+                <TouchableOpacity
+                  onPress={decreaseFontSize}
+                  style={styles.miniIslandButton}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.miniIslandButtonText}>A-</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={increaseFontSize}
+                  style={[styles.miniIslandButton, { marginLeft: 8 }]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.miniIslandButtonText}>A+</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
           </View>
         </Animated.View>
 
@@ -2489,6 +2500,7 @@ export default function App() {
             onPress={handleWpmPress}
             onLongPress={handleWpmLongPress}
             delayLongPress={400}
+            style={{ marginBottom: 12 }}
           >
             <Animated.View
               style={[
@@ -2548,45 +2560,98 @@ export default function App() {
             </Animated.View>
           </TouchableOpacity>
 
-          <View style={styles.playbackControls}>
-            <TouchableOpacity onPress={decreaseWpm} style={styles.iconButton}>
-              <Ionicons name="remove" size={40} color={theme.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={togglePlay} style={styles.playButton}>
-              <Ionicons
-                name={isPlaying ? "pause" : "play"}
-                size={48}
-                color={theme.textMuted}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={increaseWpm} style={styles.iconButton}>
-              <Ionicons name="add" size={40} color={theme.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.chapterControls}>
-            <TouchableOpacity
-              onPress={prevChapter}
-              style={styles.chapterButton}
+          {/* Controls Island */}
+          <View style={styles.readerIslandContainer}>
+            <BlurView
+              intensity={10}
+              tint="default"
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.readerIslandBlur}
             >
-              <Ionicons
-                name="play-skip-back"
-                size={24}
-                color={theme.textMuted}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={nextChapter}
-              style={styles.chapterButton}
-            >
-              <Ionicons
-                name="play-skip-forward"
-                size={24}
-                color={theme.textMuted}
-              />
-            </TouchableOpacity>
+              <View style={styles.readerIslandInner}>
+                {/* Prev Chapter */}
+                <View style={styles.buttonWrapper}>
+                  <TouchableOpacity
+                    style={styles.readerIslandButton}
+                    onPress={prevChapter}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="play-skip-back"
+                      size={20}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Decrease WPM */}
+                <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <TouchableOpacity
+                    style={styles.readerIslandButton}
+                    onPress={decreaseWpm}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="remove" size={22} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Play/Pause Button with Halo Glow */}
+                <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 98,
+                        height: 98,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.readerIslandButton,
+                      styles.readerPlayButton,
+                    ]}
+                    onPress={togglePlay}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={isPlaying ? "pause" : "play"}
+                      size={32}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Increase WPM */}
+                <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <TouchableOpacity
+                    style={styles.readerIslandButton}
+                    onPress={increaseWpm}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={22} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Next Chapter */}
+                <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
+                  <TouchableOpacity
+                    style={styles.readerIslandButton}
+                    onPress={nextChapter}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="play-skip-forward"
+                      size={20}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </BlurView>
           </View>
         </Animated.View>
         {showTutorial && renderTutorialOverlay()}
@@ -3026,25 +3091,44 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       marginTop: 28,
     },
     fontControls: {
-      width: 88,
+      width: "auto",
       flexDirection: "row",
       justifyContent: "flex-end",
       alignItems: "center",
     },
-    fontButton: {
-      width: 40,
-      height: 40,
-      marginLeft: 8,
-      backgroundColor: theme.bg,
-      borderColor: theme.accent,
-      borderWidth: 2,
+    miniIslandBlur: {
       borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`,
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`,
+      elevation: 4,
+      shadowColor: "#000",
+      shadowOpacity: 0.2,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 3 },
+    },
+    miniIslandInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    miniIslandButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
       justifyContent: "center",
       alignItems: "center",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
-    fontButtonText: {
-      color: "#777",
-      fontSize: 16,
+    miniIslandButtonText: {
+      color: "#fff",
+      fontSize: 13,
       fontWeight: "bold",
     },
     rsvpContainer: {
@@ -3130,49 +3214,48 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       fontSize: 18,
       fontWeight: "bold",
     },
-    playbackControls: {
-      flexDirection: "row",
+    readerIslandContainer: {
       alignItems: "center",
       justifyContent: "center",
-      width: "100%",
+      marginTop: 10,
     },
-    iconButton: {
+    readerIslandBlur: {
+      borderRadius: 30,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`,
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`,
+      elevation: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    readerIslandInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      width: 320,
+    },
+    readerIslandButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
+    },
+    readerPlayButton: {
       width: 64,
       height: 64,
-      backgroundColor: theme.bg,
-      borderColor: theme.accent,
-      borderWidth: 2,
       borderRadius: 32,
-      justifyContent: "center",
-      alignItems: "center",
-      marginHorizontal: 16,
-    },
-    playButton: {
-      width: 80,
-      height: 80,
-      backgroundColor: theme.bg,
-      borderColor: theme.accent,
-      borderWidth: 2,
-      borderRadius: 40,
-      justifyContent: "center",
-      alignItems: "center",
-      marginHorizontal: 16,
-    },
-    chapterControls: {
-      flexDirection: "row",
-      marginTop: 20,
-      width: "60%",
-      justifyContent: "space-between",
-    },
-    chapterButton: {
-      width: 56,
-      height: 56,
-      backgroundColor: theme.bg,
-      borderColor: theme.accent,
-      borderWidth: 2,
-      borderRadius: 28,
-      justifyContent: "center",
-      alignItems: "center",
+      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.25)`,
     },
     floatingIslandContainer: {
       position: "absolute",
