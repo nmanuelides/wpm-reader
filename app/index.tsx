@@ -785,6 +785,7 @@ export default function App() {
     const textOnAccent = yiq >= 128 ? "#000000" : "#ffffff";
 
     return {
+      hue: themeHue,
       accent: `hsl(${themeHue}, 100%, 63%)`,
       bg: `hsl(${themeHue}, 18%, 10%)`,
       surface: `hsl(${themeHue}, 18%, 18%)`,
@@ -2247,6 +2248,7 @@ export default function App() {
           <BlurView
             intensity={10}
             tint="default"
+            experimentalBlurMethod="dimezisBlurView"
             style={styles.floatingIslandBlur}
           >
             <View style={styles.floatingIslandInner}>
@@ -2766,7 +2768,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderLeftColor: "rgba(255, 255, 255, 0.15)",
       borderRightColor: "rgba(255, 255, 255, 0.15)",
       borderBottomColor: "rgba(255, 255, 255, 0.05)",
-      backgroundColor: "rgba(255, 255, 255, 0.04)", // Liquid glass background
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`, // Liquid glass background following current theme
       elevation: 8,
       shadowColor: "#000",
       shadowOpacity: 0.35,
