@@ -2181,9 +2181,36 @@ export default function App() {
         {/* Top Bar */}
         <Animated.View style={[styles.topBar, { opacity: uiOpacityAnim }]}>
           <View style={styles.leftSideArea}>
-            <TouchableOpacity onPress={closeBook} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={28} color={theme.textMuted} />
-            </TouchableOpacity>
+            <BlurView
+              intensity={10}
+              tint="default"
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.miniIslandBlur}
+            >
+              <View style={styles.miniIslandInner}>
+                <View style={styles.buttonWrapper}>
+                  <Image
+                    source={{ uri: MINI_BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 64,
+                        height: 64,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
+                  <TouchableOpacity
+                    onPress={closeBook}
+                    style={styles.miniIslandButton}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="arrow-back" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </BlurView>
           </View>
 
           <View style={styles.titleContainer}>
