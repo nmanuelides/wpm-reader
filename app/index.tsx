@@ -202,6 +202,204 @@ const generateRadialGlowPng = (exponent = 2.0, coreSize = 0.0) => {
 const RADIAL_GLOW_PNG = generateRadialGlowPng(2.0, 0.0);
 const BUTTON_GLOW_PNG = generateRadialGlowPng(5.2, 0.075); // Solid core up to 20%, then blurs/fades outwards
 
+// --- Translations ---
+const isSpanish =
+  (typeof Intl !== "undefined"
+    ? Intl.DateTimeFormat().resolvedOptions().locale
+    : "en"
+  )
+    .toLowerCase()
+    .startsWith("es");
+
+const t = (key) => {
+  const translations = {
+    deleteBookTitle: {
+      en: "Delete Book?",
+      es: "¿Eliminar libro?",
+    },
+    deleteBookConfirm: {
+      en: 'Are you sure you want to delete "',
+      es: '¿Estás seguro de que deseas eliminar "',
+    },
+    deleteBookSubSuffix: {
+      en: '"? This action cannot be undone.',
+      es: '"? Esta acción no se puede deshacer.',
+    },
+    cancel: {
+      en: "Cancel",
+      es: "Cancelar",
+    },
+    delete: {
+      en: "Delete",
+      es: "Eliminar",
+    },
+    cover: {
+      en: "Cover",
+      es: "Portada",
+    },
+    longPressHint: {
+      en: "Long press for options",
+      es: "Mantén presionado para opciones",
+    },
+    book: {
+      en: "book",
+      es: "libro",
+    },
+    books: {
+      en: "books",
+      es: "libros",
+    },
+    newBadge: {
+      en: "New",
+      es: "Nuevo",
+    },
+    resuming: {
+      en: "Resuming",
+      es: "Resumiendo",
+    },
+    pdfCoverError: {
+      en: "PDF Cover Error",
+      es: "Error de Portada PDF",
+    },
+    pdfExtractionUnavailable: {
+      en: [
+        "PDF",
+        "extraction",
+        "not",
+        "available",
+        "in",
+        "this",
+        "environment.",
+        "Use",
+        "the",
+        "installed",
+        "APK.",
+      ],
+      es: [
+        "PDF",
+        "extraction",
+        "no",
+        "disponible",
+        "en",
+        "este",
+        "entorno.",
+        "Usa",
+        "el",
+        "APK",
+        "instalado.",
+      ],
+    },
+    pdfEmptyText: {
+      en: ["The", "PDF", "does", "not", "contain", "extractable", "text."],
+      es: ["El", "PDF", "no", "contiene", "texto", "extraíble."],
+    },
+    pdfReadError: {
+      en: ["Error", "reading", "PDF:"],
+      es: ["Error", "al", "leer", "el", "PDF:"],
+    },
+    loading: {
+      en: "Loading...",
+      es: "Cargando...",
+    },
+    unsupportedFormat: {
+      en: ["Unsupported", "format"],
+      es: ["Formato", "no", "soportado"],
+    },
+    errorLoadingBook: {
+      en: ["Error", "loading", "book"],
+      es: ["Error", "al", "cargar", "el", "libro"],
+    },
+    importError: {
+      en: "Import Error",
+      es: "Error de importación",
+    },
+    coverImportError: {
+      en: "Cover Import Error",
+      es: "Error al importar portada",
+    },
+    importBook: {
+      en: "Import Book",
+      es: "Importar libro",
+    },
+    tutorialSkipText: {
+      en: "Skip",
+      es: "Omitir",
+    },
+    tutorialCheckboxLabel: {
+      en: "Don't show this tutorial again",
+      es: "No volver a mostrar este tutorial",
+    },
+    tutorialStartReading: {
+      en: "Start Reading",
+      es: "Comenzar a leer",
+    },
+    tutorialNext: {
+      en: "Next",
+      es: "Siguiente",
+    },
+    tutorialSwipeTitle: {
+      en: "Swipe to Navigate",
+      es: "Deslizar para navegar",
+    },
+    tutorialSwipeDesc: {
+      en: "Swipe left or right on the middle word to rewind or fast forward. Move your finger further to scrub faster.",
+      es: "Desliza a la izquierda o derecha en la palabra central para retroceder o avanzar. Mueve el dedo más lejos para avanzar más rápido.",
+    },
+    tutorialZoomTitle: {
+      en: "Zoom Out Context",
+      es: "Ver contexto",
+    },
+    tutorialZoomDesc: {
+      en: "Long press the middle word to zoom out and view the surrounding paragraph context.",
+      es: "Mantén presionada la palabra central para alejar y ver el contexto del párrafo circundante.",
+    },
+    tutorialSpeedTitle: {
+      en: "Set Favorite Speed",
+      es: "Ajustar velocidad favorita",
+    },
+    tutorialSpeedDesc: {
+      en: "Adjust speed easily:\n• Long press the WPM indicator to save your favorite speed.\n• Double tap the WPM indicator to restore your favorite speed.",
+      es: "Ajusta la velocidad fácilmente:\n• Mantén presionado el indicador de WPM para guardar tu velocidad favorita.\n• Toca dos veces el indicador de WPM para restaurar tu velocidad favorita.",
+    },
+    tutorialControlsTitle: {
+      en: "Interface Controls",
+      es: "Controles de interfaz",
+    },
+    tutorialControlsDesc: {
+      en: "A- / A+ adjusts font size. The bottom controls allow play/pause, manual WPM adjustments, and chapter skipping.",
+      es: "A- / A+ ajustan el tamaño de fuente. Los controles inferiores permiten reproducir/pausar, ajustar WPM manualmente y saltar capítulos.",
+    },
+    tutorialReadyTitle: {
+      en: "Ready to Read!",
+      es: "¡Listo para leer!",
+    },
+    tutorialReadyDesc: {
+      en: "You are all set to start reading! Enjoy your speed reading experience.",
+      es: "¡Ya está todo listo para comenzar a leer! Disfruta tu experiencia de lectura rápida.",
+    },
+    emptyLibraryText: {
+      en: "Your library is empty.",
+      es: "Tu biblioteca está vacía.",
+    },
+    emptyLibrarySubText: {
+      en: "Tap the import icon at the bottom dock to select EPUB, PDF or TXT files.",
+      es: "Toca el ícono de importar en la barra inferior para seleccionar archivos EPUB, PDF o TXT.",
+    },
+    selectAccentColor: {
+      en: "Select Accent Color",
+      es: "Seleccionar color de acento",
+    },
+    customSpectrum: {
+      en: "Custom Spectrum",
+      es: "Espectro personalizado",
+    },
+  };
+
+  const entry = translations[key];
+  if (!entry) return key;
+  return isSpanish ? entry.es : entry.en;
+};
+
 // --- Helpers ---
 
 // Calculate the middle letter index of a word
@@ -260,7 +458,7 @@ const extractPdfCover = async (uri) => {
     }
   } catch (e) {
     console.error("Failed to extract PDF cover", e);
-    Alert.alert("Error de Portada PDF", e.message || String(e));
+    Alert.alert(t("pdfCoverError"), e.message || String(e));
   }
   return null;
 };
@@ -436,19 +634,7 @@ const parsePdf = async (uri) => {
   try {
     if (!isAvailable()) {
       return {
-        words: [
-          "PDF",
-          "extraction",
-          "no",
-          "disponible",
-          "en",
-          "este",
-          "entorno.",
-          "Usa",
-          "el",
-          "APK",
-          "instalado.",
-        ],
+        words: t("pdfExtractionUnavailable"),
         dialogueFlags: [],
         chapterMarkers: [{ index: 0, title: "PDF" }],
       };
@@ -460,14 +646,15 @@ const parsePdf = async (uri) => {
       words:
         words.length > 0
           ? words
-          : ["El", "PDF", "no", "contiene", "texto", "extraíble."],
+          : t("pdfEmptyText"),
       dialogueFlags: flags,
       chapterMarkers: [{ index: 0, title: "PDF" }],
     };
   } catch (e) {
     console.error("Error parsing PDF:", e);
+    const errorPrefix = t("pdfReadError");
     return {
-      words: ["Error", "al", "leer", "el", "PDF:", e.message || String(e)],
+      words: [...errorPrefix, e.message || String(e)],
       dialogueFlags: [],
       chapterMarkers: [{ index: 0, title: "Error" }],
     };
@@ -567,7 +754,7 @@ const BookCardItem = ({
                 {item.name.replace(/\.[^/.]+$/, "")}
               </Text>
               <Text style={styles.uploadCoverHint}>
-                Mantén presionado para opciones
+                {t("longPressHint")}
               </Text>
             </View>
           )}
@@ -576,8 +763,8 @@ const BookCardItem = ({
               {item.totalWords > 0
                 ? `${Math.round((item.progress / item.totalWords) * 100)}%`
                 : item.progress > 0
-                  ? "Resumiendo"
-                  : "Nuevo"}
+                  ? t("resuming")
+                  : t("newBadge")}
             </Text>
           </View>
         </View>
@@ -604,7 +791,7 @@ const BookCardItem = ({
             }}
           >
             <Ionicons name="image-outline" size={18} color={theme.accent} />
-            <Text style={styles.menuOptionText}>Portada</Text>
+            <Text style={styles.menuOptionText}>{t("cover")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -613,7 +800,7 @@ const BookCardItem = ({
           >
             <Ionicons name="trash-outline" size={18} color="#ff4a4a" />
             <Text style={[styles.menuOptionText, { color: "#ff4a4a" }]}>
-              Eliminar
+              {t("delete")}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -1203,7 +1390,7 @@ export default function App() {
       }
     } catch (err) {
       console.log("Import error:", err);
-      Alert.alert("Import Error", err.message || String(err));
+      Alert.alert(t("importError"), err.message || String(err));
     }
   };
 
@@ -1232,7 +1419,7 @@ export default function App() {
       }
     } catch (err) {
       console.log("Cover import error:", err);
-      Alert.alert("Cover Import Error", err.message || String(err));
+      Alert.alert(t("coverImportError"), err.message || String(err));
     }
   };
 
@@ -1274,8 +1461,8 @@ export default function App() {
     currentBookIdRef.current = openedBookId;
     setCurrentBook(book);
     setWordIndex(0); // Safe initial state while loading
-    setWords(["Loading..."]);
-    setChapters([{ index: 0, title: "Loading..." }]);
+    setWords([t("loading")]);
+    setChapters([{ index: 0, title: t("loading") }]);
 
     if (!tutorialSeen) {
       setShowTutorial(true);
@@ -1313,7 +1500,7 @@ export default function App() {
           } else if (extension === "pdf") {
             result = await parsePdf(book.uri);
           } else {
-            result.words = ["Unsupported", "format"];
+            result.words = t("unsupportedFormat");
           }
 
           // Cache the successfully parsed content asynchronously
@@ -1338,7 +1525,7 @@ export default function App() {
           }
         } catch (err) {
           console.error("Failed to parse book:", err);
-          result.words = ["Error", "loading", "book"];
+          result.words = t("errorLoadingBook");
         }
       }
 
@@ -1354,7 +1541,7 @@ export default function App() {
   const closeBook = () => {
     wakeUpUi();
     // Save progress only if the book was fully loaded to avoid erasing progress
-    if (currentBook && words.length > 0 && words[0] !== "Loading...") {
+    if (currentBook && words.length > 0 && words[0] !== t("loading")) {
       setBooks((prev) =>
         prev.map((b) =>
           b.id === currentBook.id
@@ -2234,11 +2421,8 @@ export default function App() {
         {books.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="book-outline" size={64} color={theme.textMuted} />
-            <Text style={styles.emptyText}>Your library is empty.</Text>
-            <Text style={styles.emptySubText}>
-              Tap the import icon at the bottom dock to select EPUB, PDF or TXT
-              files.
-            </Text>
+            <Text style={styles.emptyText}>{t("emptyLibraryText")}</Text>
+            <Text style={styles.emptySubText}>{t("emptyLibrarySubText")}</Text>
           </View>
         ) : (
           <FlatList
@@ -2276,7 +2460,7 @@ export default function App() {
               <View style={styles.islandLeft}>
                 <View style={styles.islandDot} />
                 <Text style={styles.islandCount}>
-                  {books.length} {books.length === 1 ? "libro" : "libros"}
+                  {books.length} {books.length === 1 ? t("book") : t("books")}
                 </Text>
               </View>
 
@@ -2344,7 +2528,7 @@ export default function App() {
           onPress={() => setShowThemeModal(false)}
         >
           <View style={styles.themeModalContent}>
-            <Text style={styles.themeModalTitle}>Select Accent Color</Text>
+            <Text style={styles.themeModalTitle}>{t("selectAccentColor")}</Text>
             <View style={styles.hueGrid}>
               {HUES.map((h) => (
                 <TouchableOpacity
@@ -2363,7 +2547,7 @@ export default function App() {
             <Text
               style={[styles.themeModalTitle, { marginTop: 20, fontSize: 16 }]}
             >
-              Custom Spectrum
+              {t("customSpectrum")}
             </Text>
             <View style={{ width: "100%", height: 60 }}>
               <FlatList
@@ -2407,11 +2591,11 @@ export default function App() {
               color={theme.accent}
               style={{ marginBottom: 16 }}
             />
-            <Text style={styles.deleteModalTitle}>¿Eliminar libro?</Text>
+            <Text style={styles.deleteModalTitle}>{t("deleteBookTitle")}</Text>
             <Text style={styles.deleteModalSub}>
-              ¿Estás seguro de que deseas eliminar &quot;
-              {bookToDelete.name.replace(/\.[^/.]+$/, "")}&quot;? Esta acción no
-              se puede deshacer.
+              {t("deleteBookConfirm")}
+              {bookToDelete.name.replace(/\.[^/.]+$/, "")}
+              {t("deleteBookSubSuffix")}
             </Text>
 
             <View style={styles.modalButtonGroup}>
@@ -2419,14 +2603,14 @@ export default function App() {
                 style={[styles.modalButton, styles.modalCancelButton]}
                 onPress={() => setBookToDelete(null)}
               >
-                <Text style={styles.modalCancelButtonText}>Cancelar</Text>
+                <Text style={styles.modalCancelButtonText}>{t("cancel")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalDeleteButton]}
                 onPress={executeDeleteBook}
               >
-                <Text style={styles.modalDeleteButtonText}>Eliminar</Text>
+                <Text style={styles.modalDeleteButtonText}>{t("delete")}</Text>
               </TouchableOpacity>
             </View>
           </View>
