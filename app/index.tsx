@@ -3607,7 +3607,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
     },
     highlightWpm: {
       position: "absolute",
-      bottom: (insets.bottom || 0) + 156,
+      bottom: (insets.bottom || 0) + 170,
       height: 44,
       width: 140,
       borderWidth: 2,
