@@ -2273,7 +2273,6 @@ export default function App() {
           >
             <View style={styles.floatingIslandInner}>
               <View style={styles.islandLeft}>
-                <Text style={styles.islandTitle}>Centread</Text>
                 <View style={styles.islandDot} />
                 <Text style={styles.islandCount}>
                   {books.length} {books.length === 1 ? "libro" : "libros"}
@@ -2282,15 +2281,7 @@ export default function App() {
 
               <View style={styles.islandRight}>
                 <TouchableOpacity
-                  style={styles.islandButton}
-                  onPress={handleImport}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add-outline" size={24} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.islandButton, { marginLeft: 12 }]}
+                  style={[styles.islandButton, { marginRight: 12 }]}
                   onPress={() => setShowThemeModal(true)}
                   activeOpacity={0.7}
                 >
@@ -2300,6 +2291,15 @@ export default function App() {
                     color="#fff"
                   />
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.islandImportButton}
+                  onPress={handleImport}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add-outline" size={20} color="#fff" />
+                  <Text style={styles.islandImportButtonText}>Import Book</Text>
+                </TouchableOpacity>
+
               </View>
             </View>
           </BlurView>
@@ -2840,6 +2840,25 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderWidth: 1,
       borderColor: "rgba(255, 255, 255, 0.1)",
       borderTopColor: "rgba(255, 255, 255, 0.18)",
+    },
+    islandImportButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.1)",
+      borderTopColor: "rgba(255, 255, 255, 0.18)",
+    },
+    islandImportButtonText: {
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: "600",
+      marginLeft: 6,
     },
     modalOverlay: {
       ...StyleSheet.absoluteFillObject,
