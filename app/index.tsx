@@ -200,6 +200,7 @@ const generateRadialGlowPng = (exponent = 2.0, coreSize = 0.0) => {
 };
 
 const RADIAL_GLOW_PNG = generateRadialGlowPng(2.0, 0.0);
+const BUTTON_GLOW_PNG = generateRadialGlowPng(5.2, 0.075); // Solid core up to 20%, then blurs/fades outwards
 
 // --- Helpers ---
 
@@ -2280,26 +2281,56 @@ export default function App() {
               </View>
 
               <View style={styles.islandRight}>
-                <TouchableOpacity
-                  style={[styles.islandButton, { marginRight: 12 }]}
-                  onPress={() => setShowThemeModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="color-palette-outline"
-                    size={24}
-                    color="#fff"
+                {/* Theme Button with Halo Glow */}
+                <View style={styles.buttonWrapper}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 76,
+                        height: 76,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
                   />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.islandImportButton}
-                  onPress={handleImport}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add-outline" size={20} color="#fff" />
-                  <Text style={styles.islandImportButtonText}>Import Book</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.islandButton}
+                    onPress={() => setShowThemeModal(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="color-palette-outline"
+                      size={22}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
 
+                {/* Import Button with Stretched Halo Glow */}
+                <View style={[styles.buttonWrapper, { marginLeft: 16 }]}>
+                  <Image
+                    source={{ uri: BUTTON_GLOW_PNG }}
+                    style={[
+                      styles.buttonGlow,
+                      {
+                        width: 150,
+                        height: 76,
+                        tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                      },
+                    ]}
+                    resizeMode="stretch"
+                  />
+                  <TouchableOpacity
+                    style={styles.islandImportButton}
+                    onPress={handleImport}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add-outline" size={20} color="#fff" />
+                    <Text style={styles.islandImportButtonText}>Import Book</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </BlurView>
@@ -2834,12 +2865,12 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       width: 42,
       height: 42,
       borderRadius: 21,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.1)",
-      borderTopColor: "rgba(255, 255, 255, 0.18)",
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     islandImportButton: {
       flexDirection: "row",
@@ -2847,18 +2878,27 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       paddingHorizontal: 16,
       height: 42,
       borderRadius: 21,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.1)",
-      borderTopColor: "rgba(255, 255, 255, 0.18)",
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     islandImportButtonText: {
       color: "#fff",
       fontSize: 13,
       fontWeight: "600",
       marginLeft: 6,
+    },
+    buttonWrapper: {
+      position: "relative",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    buttonGlow: {
+      position: "absolute",
+      opacity: 0.55,
     },
     modalOverlay: {
       ...StyleSheet.absoluteFillObject,
