@@ -6,6 +6,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { useFonts } from "expo-font";
 import { extractText, isAvailable } from "expo-pdf-text-extract";
 import JSZip from "jszip";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -21,10 +22,19 @@ import {
   Pressable,
   StatusBar,
   StyleSheet,
-  Text,
+  Text as RNText,
   TouchableOpacity,
   View,
 } from "react-native";
+
+// Custom Text component to inject default TitilliumWeb-Regular font
+const Text = (props) => {
+  const newStyle = StyleSheet.flatten([
+    { fontFamily: "TitilliumWeb-Regular" },
+    props.style,
+  ]);
+  return <RNText {...props} style={newStyle} />;
+};
 import PdfThumbnail from "react-native-pdf-thumbnail";
 import {
   SafeAreaView,
@@ -679,6 +689,11 @@ const LibraryBackground = ({ themeHue, styles }) => {
 };
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    "TitilliumWeb-Black": require("../assets/TitilliumWeb-Black.ttf"),
+    "TitilliumWeb-Regular": require("../assets/TitilliumWeb-Regular.ttf"),
+  });
+
   const [books, setBooks] = useState([]);
   const [activeMenuBookId, setActiveMenuBookId] = useState(null);
   const [bookToDelete, setBookToDelete] = useState(null);
@@ -1762,6 +1777,10 @@ export default function App() {
     );
   };
 
+  if (!fontsLoaded) {
+    return null;
+  }
+
   if (currentBook) {
     const currentWord = words[wordIndex] || "";
     const midIdx = getMiddleIndex(currentWord);
@@ -2411,13 +2430,13 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      padding: 20,
-      marginTop: 20,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
     },
     headerTitle: {
+      fontFamily: "TitilliumWeb-Black",
       color: theme.accent,
       fontSize: 32,
-      fontWeight: "bold",
     },
     importButton: {
       flexDirection: "row",
@@ -2763,11 +2782,8 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderRadius: 30,
       overflow: "hidden",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.08)",
-      borderTopColor: "rgba(255, 255, 255, 0.20)",  // Rim light highlight
-      borderLeftColor: "rgba(255, 255, 255, 0.15)",
-      borderRightColor: "rgba(255, 255, 255, 0.15)",
-      borderBottomColor: "rgba(255, 255, 255, 0.05)",
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`, // Uniform top and side highlights to prevent sharp seams
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`, // Subtly darker bottom reflection
       backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`, // Liquid glass background following current theme
       elevation: 8,
       shadowColor: "#000",
@@ -2788,9 +2804,9 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       alignItems: "center",
     },
     islandTitle: {
+      fontFamily: "TitilliumWeb-Black",
       color: "#fff",
       fontSize: 16,
-      fontWeight: "bold",
       letterSpacing: 0.3,
     },
     islandDot: {
