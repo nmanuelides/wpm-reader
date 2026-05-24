@@ -1,12 +1,12 @@
 // @ts-nocheck
 /* eslint-disable react-hooks/exhaustive-deps */
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { useFonts } from "expo-font";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import { useFonts } from "expo-font";
 import { extractText, isAvailable } from "expo-pdf-text-extract";
 import JSZip from "jszip";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -20,12 +20,17 @@ import {
   Image,
   PanResponder,
   Pressable,
+  Text as RNText,
   StatusBar,
   StyleSheet,
-  Text as RNText,
   TouchableOpacity,
   View,
 } from "react-native";
+import PdfThumbnail from "react-native-pdf-thumbnail";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 // Custom Text component to inject default TitilliumWeb-Regular font
 const Text = (props) => {
@@ -35,11 +40,6 @@ const Text = (props) => {
   ]);
   return <RNText {...props} style={newStyle} />;
 };
-import PdfThumbnail from "react-native-pdf-thumbnail";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
 
 const HUES = [0, 30, 140, 210, 280, 330];
 const { width } = Dimensions.get("window");
@@ -2235,7 +2235,8 @@ export default function App() {
             <Ionicons name="book-outline" size={64} color={theme.textMuted} />
             <Text style={styles.emptyText}>Your library is empty.</Text>
             <Text style={styles.emptySubText}>
-              Tap the import icon at the bottom dock to select EPUB, PDF or TXT files.
+              Tap the import icon at the bottom dock to select EPUB, PDF or TXT
+              files.
             </Text>
           </View>
         ) : (
@@ -2278,7 +2279,7 @@ export default function App() {
                   {books.length} {books.length === 1 ? "libro" : "libros"}
                 </Text>
               </View>
-              
+
               <View style={styles.islandRight}>
                 <TouchableOpacity
                   style={styles.islandButton}
@@ -2293,7 +2294,11 @@ export default function App() {
                   onPress={() => setShowThemeModal(true)}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="color-palette-outline" size={24} color="#fff" />
+                  <Ionicons
+                    name="color-palette-outline"
+                    size={24}
+                    color="#fff"
+                  />
                 </TouchableOpacity>
               </View>
             </View>
