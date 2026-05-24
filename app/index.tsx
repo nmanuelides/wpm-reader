@@ -18,12 +18,15 @@ import {
   Easing,
   FlatList,
   Image,
+  LayoutAnimation,
   PanResponder,
+  Platform,
   Pressable,
   Text as RNText,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
+  UIManager,
   View,
 } from "react-native";
 import PdfThumbnail from "react-native-pdf-thumbnail";
@@ -31,6 +34,10 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Custom Text component to inject default TitilliumWeb-Regular font
 const Text = (props) => {
@@ -899,6 +906,132 @@ export default function App() {
   const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
   const currentBookIdRef = useRef(null);
 
+  const tutorialOverlayOpacity = useRef(new Animated.Value(0)).current;
+  const tutorialTranslateY = useRef(new Animated.Value(180)).current;
+  const tutorialContentAnim = useRef(new Animated.Value(1)).current;
+
+  const animateCardPosition = (step) => {
+    let target = 0;
+    if (step === 0 || step === 1) {
+      target = 180;
+    } else if (step === 2 || step === 3) {
+      target = -150;
+    }
+
+    Animated.spring(tutorialTranslateY, {
+      toValue: target,
+      friction: 8,
+      tension: 30,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleNext = () => {
+    if (tutorialStep < 4) {
+      Animated.timing(tutorialContentAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        const nextStep = tutorialStep + 1;
+        setTutorialStep(nextStep);
+        animateCardPosition(nextStep);
+        Animated.spring(tutorialContentAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }).start();
+      });
+    } else {
+      if (dontShowAgainChecked) {
+        setTutorialSeen(true);
+      }
+      Animated.parallel([
+        Animated.timing(tutorialOverlayOpacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tutorialTranslateY, {
+          toValue: 400,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setShowTutorial(false);
+      });
+    }
+  };
+
+  const handlePrev = () => {
+    if (tutorialStep > 0) {
+      Animated.timing(tutorialContentAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        const prevStep = tutorialStep - 1;
+        setTutorialStep(prevStep);
+        animateCardPosition(prevStep);
+        Animated.spring(tutorialContentAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }).start();
+      });
+    }
+  };
+
+  const handleSkip = () => {
+    Animated.parallel([
+      Animated.timing(tutorialOverlayOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(tutorialTranslateY, {
+        toValue: 400,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowTutorial(false);
+    });
+  };
+
+  const handleNextRef = useRef(handleNext);
+  const handlePrevRef = useRef(handlePrev);
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+    handlePrevRef.current = handlePrev;
+  });
+
+  const tutorialStepRef = useRef(tutorialStep);
+  const dontShowAgainCheckedRef = useRef(dontShowAgainChecked);
+  useEffect(() => {
+    tutorialStepRef.current = tutorialStep;
+    dontShowAgainCheckedRef.current = dontShowAgainChecked;
+  }, [tutorialStep, dontShowAgainChecked]);
+
+  const tutorialPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return Math.abs(gestureState.dx) > 10;
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        const { dx } = gestureState;
+        if (dx < -50) {
+          if (handleNextRef.current) handleNextRef.current();
+        } else if (dx > 50) {
+          if (handlePrevRef.current) handlePrevRef.current();
+        }
+      },
+    })
+  ).current;
+
   useEffect(() => {
     const loadLibrary = async () => {
       try {
@@ -1468,6 +1601,27 @@ export default function App() {
       setShowTutorial(true);
       setTutorialStep(0);
       setDontShowAgainChecked(false);
+      tutorialOverlayOpacity.setValue(0);
+      tutorialTranslateY.setValue(300);
+      tutorialContentAnim.setValue(0);
+      Animated.parallel([
+        Animated.timing(tutorialOverlayOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(tutorialTranslateY, {
+          toValue: 180,
+          friction: 8,
+          tension: 30,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tutorialContentAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
 
     const extension = book.name.split(".").pop().toLowerCase();
@@ -1724,51 +1878,36 @@ export default function App() {
 
     const stepsData = [
       {
-        title: "Swipe to Navigate",
-        desc: "Swipe left or right on the middle word to rewind or fast forward. Move your finger further to scrub faster.",
+        title: t("tutorialSwipeTitle"),
+        desc: t("tutorialSwipeDesc"),
         icon: "swap-horizontal",
       },
       {
-        title: "Zoom Out Context",
-        desc: "Long press the middle word to zoom out and view the surrounding paragraph context.",
+        title: t("tutorialZoomTitle"),
+        desc: t("tutorialZoomDesc"),
         icon: "scan",
       },
       {
-        title: "Set Favorite Speed",
-        desc: "Adjust speed easily:\n• Long press the WPM indicator to save your favorite speed.\n• Double tap the WPM indicator to restore your favorite speed.",
+        title: t("tutorialSpeedTitle"),
+        desc: t("tutorialSpeedDesc"),
         icon: "speedometer",
       },
       {
-        title: "Interface Controls",
-        desc: "A- / A+ adjusts font size. The bottom controls allow play/pause, manual WPM adjustments, and chapter skipping.",
+        title: t("tutorialControlsTitle"),
+        desc: t("tutorialControlsDesc"),
         icon: "cog",
       },
       {
-        title: "Ready to Read!",
-        desc: "You are all set to start reading! Enjoy your speed reading experience.",
+        title: t("tutorialReadyTitle"),
+        desc: t("tutorialReadyDesc"),
         icon: "checkmark-circle",
       },
     ];
 
     const currentStepData = stepsData[tutorialStep];
 
-    const handleNext = () => {
-      if (tutorialStep < 4) {
-        setTutorialStep(tutorialStep + 1);
-      } else {
-        if (dontShowAgainChecked) {
-          setTutorialSeen(true);
-        }
-        setShowTutorial(false);
-      }
-    };
-
-    const handleSkip = () => {
-      setShowTutorial(false);
-    };
-
     return (
-      <View style={styles.tutorialOverlay}>
+      <Animated.View style={[styles.tutorialOverlay, { opacity: tutorialOverlayOpacity }]}>
         {/* Render Highlights */}
         {tutorialStep === 0 && (
           <View style={styles.highlightRsvp}>
@@ -1892,76 +2031,122 @@ export default function App() {
         )}
 
         {/* Tutorial Instruction Card */}
-        <View style={[styles.tutorialCard, cardStyle]}>
-          {tutorialStep < 4 && (
-            <TouchableOpacity
-              style={styles.tutorialSkipButton}
-              onPress={handleSkip}
+        <Animated.View
+          style={[
+            styles.tutorialCardContainer,
+            {
+              transform: [{ translateY: tutorialTranslateY }],
+            },
+          ]}
+          {...tutorialPanResponder.panHandlers}
+        >
+          <BlurView
+            intensity={10}
+            tint="default"
+            experimentalBlurMethod="dimezisBlurView"
+            style={styles.tutorialCardBlur}
+          >
+            <Animated.View
+              style={[
+                styles.tutorialCardInner,
+                {
+                  opacity: tutorialContentAnim,
+                  transform: [
+                    {
+                      scale: tutorialContentAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.96, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
             >
-              <Text style={styles.tutorialSkipText}>Skip</Text>
-            </TouchableOpacity>
-          )}
+              {tutorialStep < 4 && (
+                <TouchableOpacity
+                  style={styles.tutorialSkipButton}
+                  onPress={handleSkip}
+                >
+                  <Text style={styles.tutorialSkipText}>{t("tutorialSkipText")}</Text>
+                </TouchableOpacity>
+              )}
 
-          <View style={styles.tutorialHeaderIcon}>
-            <Ionicons
-              name={currentStepData.icon}
-              size={36}
-              color={theme.accent}
-            />
-          </View>
-
-          <Text style={styles.tutorialTitle}>{currentStepData.title}</Text>
-          <Text style={styles.tutorialText}>{currentStepData.desc}</Text>
-
-          {/* Progress Dots */}
-          <View style={styles.tutorialDotsContainer}>
-            {stepsData.map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.tutorialDot,
-                  i === tutorialStep
-                    ? styles.tutorialDotActive
-                    : styles.tutorialDotInactive,
-                ]}
-              />
-            ))}
-          </View>
-
-          {/* Don't Show Again Checkbox */}
-          {tutorialStep === 4 && (
-            <TouchableOpacity
-              style={styles.checkboxContainer}
-              activeOpacity={0.8}
-              onPress={() => setDontShowAgainChecked(!dontShowAgainChecked)}
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  dontShowAgainChecked && styles.checkboxChecked,
-                ]}
-              >
-                {dontShowAgainChecked && (
-                  <Ionicons
-                    name="checkmark"
-                    size={14}
-                    color={theme.textOnAccent}
-                  />
-                )}
+              <View style={styles.tutorialHeaderIcon}>
+                <Ionicons
+                  name={currentStepData.icon}
+                  size={36}
+                  color={theme.accent}
+                />
               </View>
-              <Text style={styles.checkboxLabel}>
-                Don&apos;t show this tutorial again
-              </Text>
-            </TouchableOpacity>
-          )}
 
-          <TouchableOpacity style={styles.tutorialButton} onPress={handleNext}>
-            <Text style={styles.tutorialButtonText}>
-              {tutorialStep === 4 ? "Start Reading" : "Next"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+              <Text style={styles.tutorialTitle}>{currentStepData.title}</Text>
+              <Text style={styles.tutorialText}>{currentStepData.desc}</Text>
+
+              {/* Progress Dots */}
+              <View style={styles.tutorialDotsContainer}>
+                {stepsData.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.tutorialDot,
+                      i === tutorialStep
+                        ? styles.tutorialDotActive
+                        : styles.tutorialDotInactive,
+                    ]}
+                  />
+                ))}
+              </View>
+
+              {/* Don't Show Again Checkbox */}
+              {tutorialStep === 4 && (
+                <TouchableOpacity
+                  style={styles.checkboxContainer}
+                  activeOpacity={0.8}
+                  onPress={() => setDontShowAgainChecked(!dontShowAgainChecked)}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      dontShowAgainChecked && styles.checkboxChecked,
+                    ]}
+                  >
+                    {dontShowAgainChecked && (
+                      <Ionicons
+                        name="checkmark"
+                        size={14}
+                        color={theme.textOnAccent}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.checkboxLabel}>
+                    {t("tutorialCheckboxLabel")}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <View style={[styles.buttonWrapper, { width: "100%", marginTop: 10 }]}>
+                <Image
+                  source={{ uri: BUTTON_GLOW_PNG }}
+                  style={[
+                    styles.buttonGlow,
+                    {
+                      width: "110%",
+                      height: 82,
+                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                    },
+                  ]}
+                  resizeMode="stretch"
+                />
+                <TouchableOpacity style={styles.tutorialButton} onPress={handleNext}>
+                  <Text style={styles.tutorialButtonText}>
+                    {tutorialStep === 4 ? t("tutorialStartReading") : t("tutorialNext")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </BlurView>
+        </Animated.View>
+      </Animated.View>
     );
   };
 
@@ -2132,13 +2317,13 @@ export default function App() {
             >
               <Text
                 style={{
-                  color: theme.accent,
+                  color: theme.textLight,
                   fontSize: 24,
                   fontWeight: "bold",
                   textAlign: "center",
-                  textShadowColor: "rgba(0,0,0,0.5)",
-                  textShadowOffset: { width: 0, height: 2 },
-                  textShadowRadius: 4,
+                  textShadowColor: "rgba(0,0,0,0.35)",
+                  textShadowOffset: { width: 0, height: 1 },
+                  textShadowRadius: 2,
                 }}
               >
                 {chapterPopup.title}
@@ -2512,7 +2697,7 @@ export default function App() {
                     activeOpacity={0.7}
                   >
                     <Ionicons name="add-outline" size={20} color="#fff" />
-                    <Text style={styles.islandImportButtonText}>Import Book</Text>
+                    <Text style={styles.islandImportButtonText}>{t("importBook")}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -3241,21 +3426,28 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       alignSelf: "center",
       zIndex: 15,
     },
-    tutorialCard: {
-      backgroundColor: theme.surface,
-      borderRadius: 20,
-      padding: 24,
+    tutorialCardContainer: {
       width: "85%",
       alignSelf: "center",
       position: "absolute",
-      alignItems: "center",
       elevation: 10,
       shadowColor: "#000",
       shadowOpacity: 0.5,
       shadowRadius: 10,
       shadowOffset: { width: 0, height: 5 },
+    },
+    tutorialCardBlur: {
+      borderRadius: 20,
+      overflow: "hidden",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.08)",
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`,
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`,
+    },
+    tutorialCardInner: {
+      padding: 24,
+      alignItems: "center",
+      width: "100%",
     },
     tutorialSkipButton: {
       position: "absolute",
@@ -3311,15 +3503,18 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       backgroundColor: theme.textDark,
     },
     tutorialButton: {
-      backgroundColor: theme.accent,
       width: "100%",
       height: 48,
       borderRadius: 24,
+      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
       justifyContent: "center",
       alignItems: "center",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     tutorialButtonText: {
-      color: theme.textOnAccent,
+      color: "#fff",
       fontSize: 16,
       fontWeight: "bold",
     },
