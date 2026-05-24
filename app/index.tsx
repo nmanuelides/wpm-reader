@@ -1120,7 +1120,10 @@ export default function App() {
     g = Math.round((g + m) * 255);
     b = Math.round((b + m) * 255);
     let yiq = (r * 299 + g * 587 + b * 114) / 1000;
-    const textOnAccent = yiq >= 128 ? "#000000" : "#ffffff";
+    const textOnAccent = yiq >= 128 ? `hsl(${themeHue}, 100%, 8%)` : "#ffffff";
+    const isLight = yiq >= 128;
+    const buttonBg = isLight ? `hsl(${themeHue}, 100%, 63%)` : `hsla(${themeHue}, 100%, 60%, 0.15)`;
+    const buttonText = isLight ? textOnAccent : "#ffffff";
 
     return {
       hue: themeHue,
@@ -1131,6 +1134,8 @@ export default function App() {
       textMuted: `hsl(${themeHue}, 15%, 50%)`,
       textDark: `hsl(${themeHue}, 15%, 35%)`,
       textOnAccent,
+      buttonBg,
+      buttonText,
     };
   }, [themeHue]);
 
@@ -2003,7 +2008,7 @@ export default function App() {
         )}
 
         {tutorialStep === 2 && (
-          <View style={[styles.highlightWpm, { left: width / 2 - 75 }]}>
+          <View style={[styles.highlightWpm, { left: width / 2 - 70 }]}>
             <Animated.View
               style={[
                 styles.tutorialHand,
@@ -2206,7 +2211,7 @@ export default function App() {
                     style={styles.miniIslandButton}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="arrow-back" size={20} color="#fff" />
+                    <Ionicons name="arrow-back" size={20} color={theme.buttonText} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2657,7 +2662,7 @@ export default function App() {
                     <Ionicons
                       name="play-skip-back"
                       size={20}
-                      color="#fff"
+                      color={theme.buttonText}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2681,7 +2686,7 @@ export default function App() {
                     onPress={decreaseWpm}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="remove" size={22} color="#fff" />
+                    <Ionicons name="remove" size={22} color={theme.buttonText} />
                   </TouchableOpacity>
                 </View>
 
@@ -2710,7 +2715,7 @@ export default function App() {
                     <Ionicons
                       name={isPlaying ? "pause" : "play"}
                       size={32}
-                      color="#fff"
+                      color={theme.buttonText}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2734,7 +2739,7 @@ export default function App() {
                     onPress={increaseWpm}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="add" size={22} color="#fff" />
+                    <Ionicons name="add" size={22} color={theme.buttonText} />
                   </TouchableOpacity>
                 </View>
 
@@ -2760,7 +2765,7 @@ export default function App() {
                     <Ionicons
                       name="play-skip-forward"
                       size={20}
-                      color="#fff"
+                      color={theme.buttonText}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2851,7 +2856,7 @@ export default function App() {
                     <Ionicons
                       name="color-palette-outline"
                       size={22}
-                      color="#fff"
+                      color={theme.buttonText}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2875,7 +2880,7 @@ export default function App() {
                     onPress={handleImport}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="add-outline" size={20} color="#fff" />
+                    <Ionicons name="add-outline" size={20} color={theme.buttonText} />
                     <Text style={styles.islandImportButtonText}>{t("importBook")}</Text>
                   </TouchableOpacity>
                 </View>
@@ -3070,12 +3075,13 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       backgroundColor: "rgba(255, 255, 255, 0.03)",
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.08)",
-      elevation: 3,
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.22)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.12)`,
+      elevation: 8,
       shadowColor: "#000",
-      shadowOpacity: 0.2,
-      shadowRadius: 5,
-      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.45,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
     },
     bookCardInner: {
       flex: 1,
@@ -3165,7 +3171,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderRadius: 8,
     },
     progressBadgeText: {
-      color: "#fff",
+      color: theme.textOnAccent,
       fontSize: 12,
       fontWeight: "bold",
     },
@@ -3233,7 +3239,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
+      backgroundColor: theme.buttonBg,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
@@ -3241,7 +3247,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     miniIslandButtonText: {
-      color: "#fff",
+      color: theme.buttonText,
       fontSize: 13,
       fontWeight: "bold",
     },
@@ -3375,7 +3381,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       width: 42,
       height: 42,
       borderRadius: 21,
-      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
+      backgroundColor: theme.buttonBg,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
@@ -3386,7 +3392,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       width: 64,
       height: 64,
       borderRadius: 32,
-      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.25)`,
+      backgroundColor: theme.buttonBg,
     },
     floatingIslandContainer: {
       position: "absolute",
@@ -3448,7 +3454,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       width: 42,
       height: 42,
       borderRadius: 21,
-      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
+      backgroundColor: theme.buttonBg,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
@@ -3461,7 +3467,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       paddingHorizontal: 16,
       height: 42,
       borderRadius: 21,
-      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
+      backgroundColor: theme.buttonBg,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
@@ -3469,7 +3475,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     islandImportButtonText: {
-      color: "#fff",
+      color: theme.buttonText,
       fontSize: 13,
       fontWeight: "600",
       marginLeft: 6,
@@ -3601,13 +3607,13 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
     },
     highlightWpm: {
       position: "absolute",
-      bottom: (insets.bottom || 0) + 214,
-      height: 40,
-      width: 130,
+      bottom: (insets.bottom || 0) + 156,
+      height: 44,
+      width: 140,
       borderWidth: 2,
       borderColor: theme.accent,
       borderStyle: "dashed",
-      borderRadius: 20,
+      borderRadius: 22,
       backgroundColor: "rgba(255, 255, 255, 0.03)",
     },
     highlightTopBar: {
@@ -3624,14 +3630,14 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
     },
     highlightControls: {
       position: "absolute",
-      bottom: (insets.bottom || 0) + 16,
-      left: "10%",
-      right: "10%",
-      height: 195,
+      bottom: (insets.bottom || 0) + 35,
+      left: width / 2 - 165,
+      width: 330,
+      height: 100,
       borderWidth: 2,
       borderColor: theme.accent,
       borderStyle: "dashed",
-      borderRadius: 20,
+      borderRadius: 32,
       backgroundColor: "rgba(255, 255, 255, 0.03)",
     },
     tutorialHand: {
@@ -3720,7 +3726,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       width: "100%",
       height: 48,
       borderRadius: 24,
-      backgroundColor: `hsla(${theme.hue}, 100%, 60%, 0.15)`,
+      backgroundColor: theme.buttonBg,
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
@@ -3728,7 +3734,7 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     tutorialButtonText: {
-      color: "#fff",
+      color: theme.buttonText,
       fontSize: 16,
       fontWeight: "bold",
     },
