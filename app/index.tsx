@@ -981,6 +981,37 @@ export default function App() {
   const tutorialContentAnim = useRef(new Animated.Value(1)).current;
   const floatingIslandAnim = useRef(new Animated.Value(1)).current;
 
+  const [showSplash, setShowSplash] = useState(true);
+  const splashAnim = useRef(new Animated.Value(1)).current;
+  const logoScale = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.spring(logoScale, {
+        toValue: 1.05,
+        friction: 6,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1000),
+      Animated.parallel([
+        Animated.timing(splashAnim, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 1.15,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start(() => {
+      setShowSplash(false);
+    });
+  }, []);
+
   useEffect(() => {
     if (activeMenuBookId && menuOverlapsIsland) {
       Animated.timing(floatingIslandAnim, {
@@ -3141,6 +3172,51 @@ export default function App() {
             </BlurView>
           </View>
         </TouchableOpacity>
+      )}
+
+      {showSplash && (
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              opacity: splashAnim,
+              zIndex: 9999,
+              backgroundColor: "#120F16",
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <LibraryBackground themeHue={280} styles={styles} />
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Image
+              source={{ uri: PLAY_GLOW_PNG }}
+              style={{
+                position: "absolute",
+                width: 320,
+                height: 320,
+                opacity: 0.85,
+                tintColor: "hsl(280, 100%, 65%)",
+              }}
+              resizeMode="contain"
+            />
+            <Animated.Image
+              source={require("../assets/images/logo.png")}
+              style={{
+                width: 140,
+                height: 140,
+                tintColor: "hsl(280, 100%, 63%)",
+                transform: [{ scale: logoScale }],
+              }}
+              resizeMode="contain"
+            />
+          </View>
+        </Animated.View>
       )}
     </SafeAreaView>
   );
