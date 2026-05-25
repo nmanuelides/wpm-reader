@@ -9,12 +9,11 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-// Imports from modular codebase
-import { DeleteModal } from "../components/DeleteModal";
-import { LibraryView } from "../components/LibraryView";
-import { ReaderView } from "../components/ReaderView";
-import { SplashOverlay } from "../components/SplashOverlay";
-import { ThemeModal } from "../components/ThemeModal";
+import { DeleteModal } from "../components/DeleteModal/DeleteModal";
+import { LibraryView } from "../components/LibraryView/LibraryView";
+import { ReaderView } from "../components/ReaderView/ReaderView";
+import { SplashOverlay } from "../components/SplashOverlay/SplashOverlay";
+import { ThemeModal } from "../components/ThemeModal/ThemeModal";
 import { BookType, ChapterType, ThemeType } from "../types/global";
 import {
   extractEpubCover,

@@ -14,11 +14,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { GlowButton } from "../GlowButton";
+import { GlowButton } from "../GlowButton/GlowButton";
 import { getMiddleIndex } from "../../utils/parsers";
 import { t } from "../../utils/translations";
 import { Text } from "../Text";
-import { TutorialOverlay } from "../TutorialOverlay";
+import { TutorialOverlay } from "../TutorialOverlay/TutorialOverlay";
 import { getStyles } from "./styles";
 import { ReaderViewProps } from "./types/ReaderViewTypes";
 

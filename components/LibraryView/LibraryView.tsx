@@ -12,9 +12,9 @@ import {
   View,
 } from "react-native";
 import { t } from "../../utils/translations";
-import { BookCardItem } from "../BookCardItem";
-import { GlowButton } from "../GlowButton";
-import { LibraryBackground } from "../LibraryBackground";
+import { BookCardItem } from "../BookCardItem/BookCardItem";
+import { GlowButton } from "../GlowButton/GlowButton";
+import { LibraryBackground } from "../LibraryBackground/LibraryBackground";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
 import { LibraryViewProps } from "./types/LibraryViewTypes";

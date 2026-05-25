@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import React from "react";
 import { Image, TouchableOpacity, View } from "react-native";
 import { t } from "../../utils/translations";
-import { GlowButton } from "../GlowButton";
+import { GlowButton } from "../GlowButton/GlowButton";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
 import { DeleteModalProps } from "./types/DeleteModalTypes";

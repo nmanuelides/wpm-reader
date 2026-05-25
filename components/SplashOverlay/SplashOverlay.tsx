@@ -1,7 +1,7 @@
 import React from "react";
 import { Animated, Image, View } from "react-native";
 import { PLAY_GLOW_PNG } from "../../utils/glowImages";
-import { LibraryBackground } from "../LibraryBackground";
+import { LibraryBackground } from "../LibraryBackground/LibraryBackground";
 import { getStyles } from "./styles";
 import { SplashOverlayProps } from "./types/SplashOverlayTypes";
 

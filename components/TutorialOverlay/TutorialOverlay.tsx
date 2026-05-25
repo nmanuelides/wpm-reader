@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { t } from "../../utils/translations";
-import { GlowButton } from "../GlowButton";
+import { GlowButton } from "../GlowButton/GlowButton";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
 import { TutorialOverlayProps } from "./types/TutorialOverlayTypes";
