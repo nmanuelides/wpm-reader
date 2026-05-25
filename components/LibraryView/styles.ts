@@ -121,7 +121,6 @@ export const getStyles = (theme: ThemeType, insets: SafeAreaInsetsType) =>
       borderRadius: 21,
       backgroundColor: theme.buttonBg,
       justifyContent: "center",
-      alignItems: "center",
       borderWidth: 1,
       borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
       borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
