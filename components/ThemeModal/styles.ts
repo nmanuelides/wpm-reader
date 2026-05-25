@@ -10,12 +10,27 @@ export const getStyles = (theme: ThemeType) =>
       alignItems: "center",
       zIndex: 100,
     },
-    themeModalContent: {
-      backgroundColor: theme.surface,
-      padding: 24,
-      borderRadius: 20,
+    themeModalContainer: {
       width: "80%",
+      alignSelf: "center",
+      elevation: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+    },
+    themeModalBlur: {
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`,
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`,
+    },
+    themeModalInner: {
+      padding: 24,
       alignItems: "center",
+      width: "100%",
     },
     themeModalTitle: {
       color: "#fff",

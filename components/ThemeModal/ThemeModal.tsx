@@ -1,3 +1,4 @@
+import { BlurView } from "expo-blur";
 import React from "react";
 import { FlatList, TouchableOpacity, View } from "react-native";
 import { t } from "../../utils/translations";
@@ -24,8 +25,15 @@ export const ThemeModal: React.FC<ThemeModalProps> = ({
       activeOpacity={1}
       onPress={onClose}
     >
-      <View style={styles.themeModalContent}>
-        <Text style={styles.themeModalTitle}>{t("selectAccentColor")}</Text>
+      <View style={styles.themeModalContainer}>
+        <BlurView
+          intensity={10}
+          tint="default"
+          experimentalBlurMethod="dimezisBlurView"
+          style={styles.themeModalBlur}
+        >
+          <View style={styles.themeModalInner}>
+            <Text style={styles.themeModalTitle}>{t("selectAccentColor")}</Text>
         <View style={styles.hueGrid}>
           {HUES.map((h) => (
             <TouchableOpacity
@@ -71,6 +79,8 @@ export const ThemeModal: React.FC<ThemeModalProps> = ({
             }}
           />
         </View>
+          </View>
+        </BlurView>
       </View>
     </TouchableOpacity>
   );

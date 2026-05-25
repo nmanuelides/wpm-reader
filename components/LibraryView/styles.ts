@@ -128,7 +128,7 @@ export const getStyles = (theme: ThemeType, insets: SafeAreaInsetsType) =>
     islandImportButtonText: {
       color: theme.buttonText,
       fontSize: 13,
-      fontWeight: "600",
+      fontWeight: "bold",
       marginLeft: 6,
     },
   });
