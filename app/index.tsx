@@ -679,10 +679,12 @@ const BookCardItem = ({
   deleteBook,
   activeMenuBookId,
   setActiveMenuBookId,
+  insets,
 }) => {
   const isMenuOpen = activeMenuBookId === item.id;
   const menuAnim = useRef(new Animated.Value(0)).current;
   const [shouldRenderMenu, setShouldRenderMenu] = useState(isMenuOpen);
+  const cardRef = useRef(null);
 
   useEffect(() => {
     if (isMenuOpen) {
@@ -708,7 +710,26 @@ const BookCardItem = ({
   }, [isMenuOpen]);
 
   const handleLongPress = () => {
-    setActiveMenuBookId(isMenuOpen ? null : item.id);
+    if (isMenuOpen) {
+      setActiveMenuBookId(null);
+    } else {
+      if (cardRef.current) {
+        cardRef.current.measureInWindow((x, pageY, cardWidth, cardHeight) => {
+          if (pageY === undefined || cardHeight === undefined) {
+            setActiveMenuBookId(item.id, true);
+            return;
+          }
+          const screenHeight = Dimensions.get("window").height;
+          const cardBottom = pageY + cardHeight;
+          const menuBottom = cardBottom + 62; // Menu extends 62px below card
+          const threshold = screenHeight - (insets?.bottom || 0) - 110;
+          const overlaps = menuBottom > threshold;
+          setActiveMenuBookId(item.id, overlaps);
+        });
+      } else {
+        setActiveMenuBookId(item.id, false);
+      }
+    }
   };
 
   const menuScale = menuAnim.interpolate({
@@ -728,6 +749,7 @@ const BookCardItem = ({
 
   return (
     <View
+      ref={cardRef}
       style={[styles.bookCardContainer, shouldRenderMenu && { zIndex: 999 }]}
     >
       <TouchableOpacity
@@ -782,36 +804,75 @@ const BookCardItem = ({
       {shouldRenderMenu && (
         <Animated.View
           style={[
-            styles.bookCardMenu,
+            styles.bookCardMenuContainer,
             {
               opacity: menuOpacity,
               transform: [{ scale: menuScale }, { translateY: menuTranslateY }],
             },
           ]}
         >
-          <TouchableOpacity
-            style={[
-              styles.menuOption,
-              { borderRightWidth: 1, borderRightColor: theme.surface },
-            ]}
-            onPress={() => {
-              setActiveMenuBookId(null);
-              pickCustomCover(item.id);
-            }}
+          <BlurView
+            intensity={10}
+            tint="default"
+            experimentalBlurMethod="dimezisBlurView"
+            style={styles.bookCardMenuBlur}
           >
-            <Ionicons name="image-outline" size={18} color={theme.accent} />
-            <Text style={styles.menuOptionText}>{t("cover")}</Text>
-          </TouchableOpacity>
+            <View style={styles.bookCardMenuInner}>
+              <View style={styles.menuButtonWrapper}>
+                <Image
+                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
+                  style={[
+                    styles.menuButtonGlow,
+                    {
+                      width: 64,
+                      height: 64,
+                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                    },
+                  ]}
+                  resizeMode="stretch"
+                />
+                <TouchableOpacity
+                  style={styles.menuOptionButtonTransparent}
+                  onPress={() => {
+                    setActiveMenuBookId(null);
+                    pickCustomCover(item.id);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="image-outline" size={20} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
 
-          <TouchableOpacity
-            style={styles.menuOption}
-            onPress={() => deleteBook(item.id)}
-          >
-            <Ionicons name="trash-outline" size={18} color="#ff4a4a" />
-            <Text style={[styles.menuOptionText, { color: "#ff4a4a" }]}>
-              {t("delete")}
-            </Text>
-          </TouchableOpacity>
+              <View style={styles.menuButtonWrapper}>
+                <Image
+                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
+                  style={[
+                    styles.menuButtonGlow,
+                    {
+                      width: 64,
+                      height: 64,
+                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                    },
+                  ]}
+                  resizeMode="stretch"
+                />
+                <TouchableOpacity
+                  style={styles.menuOptionButtonGlass}
+                  onPress={() => {
+                    setActiveMenuBookId(null);
+                    deleteBook(item.id);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={20}
+                    color={theme.buttonText}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </BlurView>
         </Animated.View>
       )}
     </View>
@@ -892,7 +953,14 @@ export default function App() {
   });
 
   const [books, setBooks] = useState([]);
-  const [activeMenuBookId, setActiveMenuBookId] = useState(null);
+  const [activeMenuBookId, rawSetActiveMenuBookId] = useState(null);
+  const [menuOverlapsIsland, setMenuOverlapsIsland] = useState(false);
+
+  const setActiveMenuBookId = (bookId, overlaps = false) => {
+    rawSetActiveMenuBookId(bookId);
+    setMenuOverlapsIsland(overlaps);
+  };
+
   const [bookToDelete, setBookToDelete] = useState(null);
   const [currentBook, setCurrentBook] = useState(null);
   const [words, setWords] = useState([]);
@@ -911,6 +979,23 @@ export default function App() {
   const tutorialOverlayOpacity = useRef(new Animated.Value(0)).current;
   const tutorialTranslateY = useRef(new Animated.Value(180)).current;
   const tutorialContentAnim = useRef(new Animated.Value(1)).current;
+  const floatingIslandAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (activeMenuBookId && menuOverlapsIsland) {
+      Animated.timing(floatingIslandAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(floatingIslandAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [activeMenuBookId, menuOverlapsIsland]);
 
   const animateCardPosition = (step) => {
     let target = 0;
@@ -1122,8 +1207,10 @@ export default function App() {
     let yiq = (r * 299 + g * 587 + b * 114) / 1000;
     const textOnAccent = yiq >= 128 ? `hsl(${themeHue}, 100%, 8%)` : "#ffffff";
     const isLight = yiq >= 128;
-    const buttonBg = isLight ? `hsl(${themeHue}, 100%, 63%)` : `hsla(${themeHue}, 100%, 60%, 0.15)`;
-    const buttonText = isLight ? textOnAccent : "#ffffff";
+    const buttonBg = isLight ? `hsla(${themeHue}, 100%, 45%, 0.15)` : `hsla(${themeHue}, 100%, 60%, 0.15)`;
+    const buttonText = "#ffffff";
+    const deleteButtonBg = isLight ? "hsla(0, 100%, 45%, 0.25)" : "hsla(0, 100%, 60%, 0.15)";
+    const deleteButtonText = "#ffffff";
 
     return {
       hue: themeHue,
@@ -1136,6 +1223,8 @@ export default function App() {
       textOnAccent,
       buttonBg,
       buttonText,
+      deleteButtonBg,
+      deleteButtonText,
     };
   }, [themeHue]);
 
@@ -2784,7 +2873,14 @@ export default function App() {
       <LibraryBackground themeHue={themeHue} styles={styles} />
       <Pressable style={{ flex: 1 }} onPress={() => setActiveMenuBookId(null)}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Centread</Text>
+          <View style={styles.headerTitleContainer}>
+            <Image
+              source={require("../assets/images/logo.png")}
+              style={[styles.headerLogo, { tintColor: theme.accent }]}
+              resizeMode="contain"
+            />
+            <Text style={styles.headerTitle}>Centread</Text>
+          </View>
         </View>
 
         {books.length === 0 ? (
@@ -2810,6 +2906,7 @@ export default function App() {
                 deleteBook={deleteBook}
                 activeMenuBookId={activeMenuBookId}
                 setActiveMenuBookId={setActiveMenuBookId}
+                insets={insets}
               />
             )}
           />
@@ -2818,7 +2915,26 @@ export default function App() {
 
       {/* Bottom Floating Island Dock */}
       {!currentBook && (
-        <View style={styles.floatingIslandContainer}>
+        <Animated.View
+          style={[
+            styles.floatingIslandContainer,
+            {
+              opacity: floatingIslandAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.4, 1],
+              }),
+              transform: [
+                {
+                  translateY: floatingIslandAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [75 + (insets?.bottom || 0), 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+          pointerEvents={activeMenuBookId && menuOverlapsIsland ? "none" : "auto"}
+        >
           <BlurView
             intensity={10}
             tint="default"
@@ -2887,7 +3003,7 @@ export default function App() {
               </View>
             </View>
           </BlurView>
-        </View>
+        </Animated.View>
       )}
 
       {showThemeModal && (
@@ -2953,35 +3069,76 @@ export default function App() {
           activeOpacity={1}
           onPress={() => setBookToDelete(null)}
         >
-          <View style={styles.deleteModalContent}>
-            <Ionicons
-              name="trash-bin-outline"
-              size={48}
-              color={theme.accent}
-              style={{ marginBottom: 16 }}
-            />
-            <Text style={styles.deleteModalTitle}>{t("deleteBookTitle")}</Text>
-            <Text style={styles.deleteModalSub}>
-              {t("deleteBookConfirm")}
-              {bookToDelete.name.replace(/\.[^/.]+$/, "")}
-              {t("deleteBookSubSuffix")}
-            </Text>
+          <View style={styles.deleteModalContainer}>
+            <BlurView
+              intensity={10}
+              tint="default"
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.deleteModalBlur}
+            >
+              <View style={styles.deleteModalInner}>
+                <Ionicons
+                  name="trash-bin-outline"
+                  size={48}
+                  color={theme.accent}
+                  style={{ marginBottom: 16 }}
+                />
+                <Text style={styles.deleteModalTitle}>{t("deleteBookTitle")}</Text>
+                <Text style={styles.deleteModalSub}>
+                  {t("deleteBookConfirm")}
+                  {bookToDelete.name.replace(/\.[^/.]+$/, "")}
+                  {t("deleteBookSubSuffix")}
+                </Text>
 
-            <View style={styles.modalButtonGroup}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => setBookToDelete(null)}
-              >
-                <Text style={styles.modalCancelButtonText}>{t("cancel")}</Text>
-              </TouchableOpacity>
+                <View style={styles.modalButtonGroup}>
+                  <View style={styles.modalButtonWrapper}>
+                    <Image
+                      source={{ uri: BUTTON_GLOW_PNG }}
+                      style={[
+                        styles.modalButtonGlow,
+                        {
+                          width: 150,
+                          height: 64,
+                          tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                        },
+                      ]}
+                      resizeMode="stretch"
+                    />
+                    <TouchableOpacity
+                      style={styles.modalCancelButtonGlass}
+                      onPress={() => setBookToDelete(null)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.modalCancelButtonText}>{t("cancel")}</Text>
+                    </TouchableOpacity>
+                  </View>
 
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalDeleteButton]}
-                onPress={executeDeleteBook}
-              >
-                <Text style={styles.modalDeleteButtonText}>{t("delete")}</Text>
-              </TouchableOpacity>
-            </View>
+                  <View style={styles.modalButtonWrapper}>
+                    <Image
+                      source={{ uri: BUTTON_GLOW_PNG }}
+                      style={[
+                        styles.modalButtonGlow,
+                        {
+                          width: 150,
+                          height: 64,
+                          tintColor: `hsl(${theme.hue}, 100%, 65%)`,
+                        },
+                      ]}
+                      resizeMode="stretch"
+                    />
+                    <TouchableOpacity
+                      style={styles.modalDeleteButtonGlass}
+                      onPress={executeDeleteBook}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.modalDeleteButtonText}>
+                        {t("delete")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </BlurView>
           </View>
         </TouchableOpacity>
       )}
@@ -3022,10 +3179,22 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       paddingVertical: 16,
       paddingHorizontal: 20,
     },
+    headerTitleContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    headerLogo: {
+      width: 48,
+      height: 48,
+      padding:0,
+    },
     headerTitle: {
       fontFamily: "TitilliumWeb-Black",
       color: theme.accent,
       fontSize: 32,
+      padding:0,
+      margin:0,
+      marginBottom:4
     },
     importButton: {
       flexDirection: "row",
@@ -3088,17 +3257,11 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       borderRadius: 12,
       overflow: "hidden",
     },
-    bookCardMenu: {
+    bookCardMenuContainer: {
       position: "absolute",
-      bottom: -55,
+      bottom: -62,
       left: 0,
       right: 0,
-      height: 50,
-      backgroundColor: theme.surface,
-      borderRadius: 10,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
       elevation: 8,
       shadowColor: "#000",
       shadowOpacity: 0.4,
@@ -3106,18 +3269,54 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       shadowOffset: { width: 0, height: 3 },
       zIndex: 100,
     },
-    menuOption: {
-      flex: 1,
-      height: "100%",
+    bookCardMenuBlur: {
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`,
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`,
+    },
+    bookCardMenuInner: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
+      gap: 20,
+      paddingVertical: 8,
+      width: "100%",
     },
-    menuOptionText: {
-      color: "#fff",
-      fontSize: 12,
-      fontWeight: "bold",
+    menuButtonWrapper: {
+      position: "relative",
+      justifyContent: "center",
+      alignItems: "center",
+      width: 44,
+      height: 44,
+    },
+    menuButtonGlow: {
+      position: "absolute",
+      opacity: 0.55,
+    },
+    menuOptionButtonTransparent: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: "transparent",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
+    },
+    menuOptionButtonGlass: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: theme.buttonBg,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     coverPlaceholder: {
       flex: 1,
@@ -3534,55 +3733,86 @@ const getStyles = (theme, insets = { top: 0, bottom: 0, left: 0, right: 0 }) =>
       textAlign: "center",
       lineHeight: 32,
     },
-    deleteModalContent: {
-      backgroundColor: theme.surface,
-      padding: 24,
-      borderRadius: 20,
+    deleteModalContainer: {
       width: "85%",
-      alignItems: "center",
+      alignSelf: "center",
+      elevation: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+    },
+    deleteModalBlur: {
+      borderRadius: 20,
+      overflow: "hidden",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.08)",
+      borderColor: `hsla(${theme.hue}, 95%, 85%, 0.24)`,
+      borderBottomColor: `hsla(${theme.hue}, 90%, 80%, 0.14)`,
+      backgroundColor: `hsla(${theme.hue}, 54%, 9%, 0.75)`,
+    },
+    deleteModalInner: {
+      padding: 24,
+      alignItems: "center",
+      width: "100%",
     },
     deleteModalTitle: {
       color: "#fff",
-      fontSize: 22,
+      fontSize: 20,
       fontWeight: "bold",
       marginBottom: 10,
+      textAlign: "center",
     },
     deleteModalSub: {
-      color: theme.textMuted,
+      color: theme.textLight,
       fontSize: 14,
       textAlign: "center",
-      lineHeight: 20,
-      marginBottom: 24,
+      lineHeight: 22,
+      marginBottom: 20,
     },
     modalButtonGroup: {
       flexDirection: "row",
       width: "100%",
       gap: 12,
     },
-    modalButton: {
+    modalButtonWrapper: {
       flex: 1,
-      height: 48,
-      borderRadius: 24,
+      position: "relative",
       justifyContent: "center",
       alignItems: "center",
     },
-    modalCancelButton: {
-      backgroundColor: "rgba(255, 255, 255, 0.08)",
+    modalButtonGlow: {
+      position: "absolute",
+      opacity: 0.55,
+    },
+    modalCancelButtonGlass: {
+      width: "100%",
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: "transparent",
+      justifyContent: "center",
+      alignItems: "center",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.1)",
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     modalCancelButtonText: {
-      color: "#fff",
+      color: "#ffffff",
       fontSize: 14,
       fontWeight: "600",
     },
-    modalDeleteButton: {
-      backgroundColor: theme.accent,
+    modalDeleteButtonGlass: {
+      width: "100%",
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.buttonBg,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: `hsla(${theme.hue}, 100%, 80%, 0.12)`,
+      borderTopColor: `hsla(${theme.hue}, 100%, 85%, 0.25)`,
     },
     modalDeleteButtonText: {
-      color: theme.textOnAccent,
+      color: theme.buttonText,
       fontSize: 14,
       fontWeight: "bold",
     },
