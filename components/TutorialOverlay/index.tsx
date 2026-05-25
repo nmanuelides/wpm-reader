@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
+  Easing,
   Image,
   PanResponder,
   TouchableOpacity,
@@ -42,10 +43,10 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({
           duration: 300,
           useNativeDriver: true,
         }),
-        Animated.spring(tutorialTranslateY, {
+        Animated.timing(tutorialTranslateY, {
           toValue: 180,
-          friction: 8,
-          tension: 30,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(tutorialContentAnim, {
@@ -84,10 +85,10 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({
       target = -150;
     }
 
-    Animated.spring(tutorialTranslateY, {
+    Animated.timing(tutorialTranslateY, {
       toValue: target,
-      friction: 8,
-      tension: 30,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
   };
@@ -173,9 +174,9 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({
 
   const tutorialPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return Math.abs(gestureState.dx) > 10;
+        return Math.abs(gestureState.dx) > 30;
       },
       onPanResponderRelease: (evt, gestureState) => {
         const { dx } = gestureState;

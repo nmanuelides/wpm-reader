@@ -3,7 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { useFonts } from "expo-font";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Animated, Easing, StyleSheet } from "react-native";
+import { Alert, Animated, BackHandler, Easing, StyleSheet } from "react-native";
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
@@ -85,6 +85,24 @@ export default function App() {
       }).start();
     }
   }, [activeMenuBookId, menuOverlapsIsland]);
+
+  // Handle Android physical/gesture back button
+  useEffect(() => {
+    const onBackPress = () => {
+      if (currentBookIdRef.current) {
+        closeBook();
+        return true; // prevent default behavior (exit app)
+      }
+      return false; // let default behavior happen (exit app)
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+
+    return () => subscription.remove();
+  }, []);
 
   // Load Library Data
   useEffect(() => {
