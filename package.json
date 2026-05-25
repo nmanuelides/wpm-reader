@@ -6,6 +6,7 @@
     "start": "expo start --tunnel",
     "reset-project": "node ./scripts/reset-project.js",
     "apk": "eas build -p android --profile preview",
+    "build-apk": "node ./scripts/build-apk.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
