@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import React from "react";
 import { Image, TouchableOpacity, View } from "react-native";
-import { BUTTON_GLOW_PNG } from "../../utils/glowImages";
 import { t } from "../../utils/translations";
+import { GlowButton } from "../GlowButton";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
 import { DeleteModalProps } from "./types/DeleteModalTypes";
@@ -46,51 +46,35 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
             </Text>
 
             <View style={styles.modalButtonGroup}>
-              <View style={styles.modalButtonWrapper}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.modalButtonGlow,
-                    {
-                      width: 150,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  style={styles.modalCancelButtonGlass}
-                  onPress={onCancel}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.modalCancelButtonText}>{t("cancel")}</Text>
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="pill"
+                size={48}
+                width="100%"
+                glowType="button"
+                bgType="transparent"
+                containerStyle={{ flex: 1 }}
+                buttonStyle={styles.modalCancelButtonGlass}
+                onPress={onCancel}
+              >
+                <Text style={styles.modalCancelButtonText}>{t("cancel")}</Text>
+              </GlowButton>
 
-              <View style={styles.modalButtonWrapper}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.modalButtonGlow,
-                    {
-                      width: 150,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  style={styles.modalDeleteButtonGlass}
-                  onPress={onDelete}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.modalDeleteButtonText}>
-                    {t("delete")}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="pill"
+                size={48}
+                width="100%"
+                glowType="button"
+                bgType="delete"
+                containerStyle={{ flex: 1 }}
+                buttonStyle={styles.modalDeleteButtonGlass}
+                onPress={onDelete}
+              >
+                <Text style={styles.modalDeleteButtonText}>
+                  {t("delete")}
+                </Text>
+              </GlowButton>
             </View>
           </View>
         </BlurView>

@@ -114,17 +114,6 @@ export const getStyles = (theme: ThemeType) =>
       paddingVertical: 8,
       width: "100%",
     },
-    menuButtonWrapper: {
-      position: "relative",
-      justifyContent: "center",
-      alignItems: "center",
-      width: 44,
-      height: 44,
-    },
-    menuButtonGlow: {
-      position: "absolute",
-      opacity: 0.55,
-    },
     menuOptionButtonTransparent: {
       width: 38,
       height: 38,

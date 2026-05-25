@@ -171,15 +171,6 @@ export const getStyles = (theme: ThemeType, insets: SafeAreaInsetsType) =>
       fontSize: 13,
       fontWeight: "500",
     },
-    buttonWrapper: {
-      position: "relative",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    buttonGlow: {
-      position: "absolute",
-      opacity: 0.55,
-    },
     tutorialButton: {
       width: "100%",
       height: 48,

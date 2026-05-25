@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Dimensions, Image, TouchableOpacity, View } from "react-native";
-import { MINI_BUTTON_GLOW_PNG } from "../../utils/glowImages";
 import { t } from "../../utils/translations";
+import { GlowButton } from "../GlowButton";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
 import { BookCardItemProps } from "./types/BookCardItemTypes";
@@ -156,59 +156,39 @@ export const BookCardItem: React.FC<BookCardItemProps> = ({
             style={styles.bookCardMenuBlur}
           >
             <View style={styles.bookCardMenuInner}>
-              <View style={styles.menuButtonWrapper}>
-                <Image
-                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.menuButtonGlow,
-                    {
-                      width: 64,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  style={styles.menuOptionButtonTransparent}
-                  onPress={() => {
-                    setActiveMenuBookId(null);
-                    pickCustomCover(item.id);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="image-outline" size={20} color="#ffffff" />
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={38}
+                glowType="mini"
+                bgType="transparent"
+                buttonStyle={styles.menuOptionButtonTransparent}
+                onPress={() => {
+                  setActiveMenuBookId(null);
+                  pickCustomCover(item.id);
+                }}
+              >
+                <Ionicons name="image-outline" size={20} color="#ffffff" />
+              </GlowButton>
 
-              <View style={styles.menuButtonWrapper}>
-                <Image
-                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.menuButtonGlow,
-                    {
-                      width: 64,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={38}
+                glowType="mini"
+                bgType="glass"
+                buttonStyle={styles.menuOptionButtonGlass}
+                onPress={() => {
+                  setActiveMenuBookId(null);
+                  deleteBook(item.id);
+                }}
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={20}
+                  color={theme.buttonText}
                 />
-                <TouchableOpacity
-                  style={styles.menuOptionButtonGlass}
-                  onPress={() => {
-                    setActiveMenuBookId(null);
-                    deleteBook(item.id);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="trash-outline"
-                    size={20}
-                    color={theme.buttonText}
-                  />
-                </TouchableOpacity>
-              </View>
+              </GlowButton>
             </View>
           </BlurView>
         </Animated.View>

@@ -14,11 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import {
-  BUTTON_GLOW_PNG,
-  MINI_BUTTON_GLOW_PNG,
-  PLAY_GLOW_PNG,
-} from "../../utils/glowImages";
+import { GlowButton } from "../GlowButton";
 import { getMiddleIndex } from "../../utils/parsers";
 import { t } from "../../utils/translations";
 import { Text } from "../Text";
@@ -537,27 +533,16 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             style={styles.miniIslandBlur}
           >
             <View style={styles.miniIslandInner}>
-              <View style={styles.buttonWrapper}>
-                <Image
-                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 64,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  onPress={closeBook}
-                  style={styles.miniIslandButton}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="arrow-back" size={20} color={theme.buttonText} />
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={36}
+                glowType="mini"
+                buttonStyle={styles.miniIslandButton}
+                onPress={closeBook}
+              >
+                <Ionicons name="arrow-back" size={20} color={theme.buttonText} />
+              </GlowButton>
             </View>
           </BlurView>
         </View>
@@ -581,48 +566,27 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             style={styles.miniIslandBlur}
           >
             <View style={styles.miniIslandInner}>
-              <View style={styles.buttonWrapper}>
-                <Image
-                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 64,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  onPress={decreaseFontSize}
-                  style={styles.miniIslandButton}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.miniIslandButtonText}>A-</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={[styles.buttonWrapper, { marginLeft: 8 }]}>
-                <Image
-                  source={{ uri: MINI_BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 64,
-                      height: 64,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  onPress={increaseFontSize}
-                  style={styles.miniIslandButton}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.miniIslandButtonText}>A+</Text>
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={36}
+                glowType="mini"
+                buttonStyle={styles.miniIslandButton}
+                onPress={decreaseFontSize}
+              >
+                <Text style={styles.miniIslandButtonText}>A-</Text>
+              </GlowButton>
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={36}
+                glowType="mini"
+                containerStyle={{ marginLeft: 8 }}
+                buttonStyle={styles.miniIslandButton}
+                onPress={increaseFontSize}
+              >
+                <Text style={styles.miniIslandButtonText}>A+</Text>
+              </GlowButton>
             </View>
           </BlurView>
         </View>
@@ -985,134 +949,80 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
           >
             <View style={styles.readerIslandInner}>
               {/* Prev Chapter */}
-              <View style={styles.buttonWrapper}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 76,
-                      height: 76,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={42}
+                glowType="button"
+                buttonStyle={styles.readerIslandButton}
+                onPress={prevChapter}
+              >
+                <Ionicons
+                  name="play-skip-back"
+                  size={20}
+                  color={theme.buttonText}
                 />
-                <TouchableOpacity
-                  style={styles.readerIslandButton}
-                  onPress={prevChapter}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="play-skip-back"
-                    size={20}
-                    color={theme.buttonText}
-                  />
-                </TouchableOpacity>
-              </View>
+              </GlowButton>
 
               {/* Decrease WPM */}
-              <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 76,
-                      height: 76,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  style={styles.readerIslandButton}
-                  onPress={decreaseWpm}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="remove" size={22} color={theme.buttonText} />
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={42}
+                glowType="button"
+                containerStyle={{ marginLeft: 12 }}
+                buttonStyle={styles.readerIslandButton}
+                onPress={decreaseWpm}
+              >
+                <Ionicons name="remove" size={22} color={theme.buttonText} />
+              </GlowButton>
 
               {/* Play/Pause Button with Halo Glow */}
-              <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
-                <Image
-                  source={{ uri: PLAY_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 98,
-                      height: 98,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={64}
+                glowType="play"
+                containerStyle={{ marginLeft: 12 }}
+                buttonStyle={styles.readerPlayButton}
+                onPress={togglePlay}
+              >
+                <Ionicons
+                  name={isPlaying ? "pause" : "play"}
+                  size={32}
+                  color={theme.buttonText}
                 />
-                <TouchableOpacity
-                  style={[
-                    styles.readerIslandButton,
-                    styles.readerPlayButton,
-                  ]}
-                  onPress={togglePlay}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={isPlaying ? "pause" : "play"}
-                    size={32}
-                    color={theme.buttonText}
-                  />
-                </TouchableOpacity>
-              </View>
+              </GlowButton>
 
               {/* Increase WPM */}
-              <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 76,
-                      height: 76,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  style={styles.readerIslandButton}
-                  onPress={increaseWpm}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add" size={22} color={theme.buttonText} />
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={42}
+                glowType="button"
+                containerStyle={{ marginLeft: 12 }}
+                buttonStyle={styles.readerIslandButton}
+                onPress={increaseWpm}
+              >
+                <Ionicons name="add" size={22} color={theme.buttonText} />
+              </GlowButton>
 
               {/* Next Chapter */}
-              <View style={[styles.buttonWrapper, { marginLeft: 12 }]}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 76,
-                      height: 76,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={42}
+                glowType="button"
+                containerStyle={{ marginLeft: 12 }}
+                buttonStyle={styles.readerIslandButton}
+                onPress={nextChapter}
+              >
+                <Ionicons
+                  name="play-skip-forward"
+                  size={20}
+                  color={theme.buttonText}
                 />
-                <TouchableOpacity
-                  style={styles.readerIslandButton}
-                  onPress={nextChapter}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="play-skip-forward"
-                    size={20}
-                    color={theme.buttonText}
-                  />
-                </TouchableOpacity>
-              </View>
+              </GlowButton>
             </View>
           </BlurView>
         </View>

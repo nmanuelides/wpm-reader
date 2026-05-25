@@ -131,13 +131,4 @@ export const getStyles = (theme: ThemeType, insets: SafeAreaInsetsType) =>
       fontWeight: "600",
       marginLeft: 6,
     },
-    buttonWrapper: {
-      position: "relative",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    buttonGlow: {
-      position: "absolute",
-      opacity: 0.55,
-    },
   });

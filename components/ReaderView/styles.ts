@@ -224,15 +224,6 @@ export const getStyles = (theme: ThemeType, insets: SafeAreaInsetsType) =>
       borderRadius: 32,
       backgroundColor: theme.buttonBg,
     },
-    buttonWrapper: {
-      position: "relative",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    buttonGlow: {
-      position: "absolute",
-      opacity: 0.55,
-    },
     contextContainer: {
       ...StyleSheet.absoluteFillObject,
       justifyContent: "center",

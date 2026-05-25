@@ -51,16 +51,6 @@ export const getStyles = (theme: ThemeType) =>
       width: "100%",
       gap: 12,
     },
-    modalButtonWrapper: {
-      flex: 1,
-      position: "relative",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    modalButtonGlow: {
-      position: "absolute",
-      opacity: 0.55,
-    },
     modalCancelButtonGlass: {
       width: "100%",
       height: 48,

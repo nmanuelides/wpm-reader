@@ -9,8 +9,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BUTTON_GLOW_PNG } from "../../utils/glowImages";
 import { t } from "../../utils/translations";
+import { GlowButton } from "../GlowButton";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
 import { TutorialOverlayProps } from "./types/TutorialOverlayTypes";
@@ -445,35 +445,24 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({
               </TouchableOpacity>
             )}
 
-            <View
-              style={[
-                styles.buttonWrapper,
-                { width: "100%", marginTop: 10 },
-              ]}
+            <GlowButton
+              theme={theme}
+              variant="pill"
+              size={48}
+              width="100%"
+              glowType="button"
+              glowWidth="110%"
+              glowHeight={82}
+              containerStyle={{ width: "100%", marginTop: 10 }}
+              buttonStyle={styles.tutorialButton}
+              onPress={handleNext}
             >
-              <Image
-                source={{ uri: BUTTON_GLOW_PNG }}
-                style={[
-                  styles.buttonGlow,
-                  {
-                    width: "110%",
-                    height: 82,
-                    tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                  },
-                ]}
-                resizeMode="stretch"
-              />
-              <TouchableOpacity
-                style={styles.tutorialButton}
-                onPress={handleNext}
-              >
-                <Text style={styles.tutorialButtonText}>
-                  {tutorialStep === 4
-                    ? t("tutorialStartReading")
-                    : t("tutorialNext")}
-                </Text>
-              </TouchableOpacity>
-            </View>
+              <Text style={styles.tutorialButtonText}>
+                {tutorialStep === 4
+                  ? t("tutorialStartReading")
+                  : t("tutorialNext")}
+              </Text>
+            </GlowButton>
           </Animated.View>
         </BlurView>
       </Animated.View>

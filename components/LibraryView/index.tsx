@@ -11,9 +11,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BUTTON_GLOW_PNG } from "../../utils/glowImages";
 import { t } from "../../utils/translations";
 import { BookCardItem } from "../BookCardItem";
+import { GlowButton } from "../GlowButton";
 import { LibraryBackground } from "../LibraryBackground";
 import { Text } from "../Text";
 import { getStyles } from "./styles";
@@ -118,55 +118,34 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
             <View style={styles.islandRight}>
               {/* Theme Button with Halo Glow */}
-              <View style={styles.buttonWrapper}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 76,
-                      height: 76,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
+              <GlowButton
+                theme={theme}
+                variant="circle"
+                size={42}
+                glowType="button"
+                buttonStyle={styles.islandButton}
+                onPress={() => setShowThemeModal(true)}
+              >
+                <Ionicons
+                  name="color-palette-outline"
+                  size={22}
+                  color={theme.buttonText}
                 />
-                <TouchableOpacity
-                  style={styles.islandButton}
-                  onPress={() => setShowThemeModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="color-palette-outline"
-                    size={22}
-                    color={theme.buttonText}
-                  />
-                </TouchableOpacity>
-              </View>
+              </GlowButton>
 
               {/* Import Button with Stretched Halo Glow */}
-              <View style={[styles.buttonWrapper, { marginLeft: 16 }]}>
-                <Image
-                  source={{ uri: BUTTON_GLOW_PNG }}
-                  style={[
-                    styles.buttonGlow,
-                    {
-                      width: 150,
-                      height: 76,
-                      tintColor: `hsl(${theme.hue}, 100%, 65%)`,
-                    },
-                  ]}
-                  resizeMode="stretch"
-                />
-                <TouchableOpacity
-                  style={styles.islandImportButton}
-                  onPress={handleImport}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add-outline" size={20} color={theme.buttonText} />
-                  <Text style={styles.islandImportButtonText}>{t("importBook")}</Text>
-                </TouchableOpacity>
-              </View>
+              <GlowButton
+                theme={theme}
+                variant="pill"
+                size={42}
+                glowType="button"
+                containerStyle={{ marginLeft: 16 }}
+                buttonStyle={styles.islandImportButton}
+                onPress={handleImport}
+              >
+                <Ionicons name="add-outline" size={20} color={theme.buttonText} />
+                <Text style={styles.islandImportButtonText}>{t("importBook")}</Text>
+              </GlowButton>
             </View>
           </View>
         </BlurView>
