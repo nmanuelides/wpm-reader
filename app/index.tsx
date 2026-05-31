@@ -330,7 +330,12 @@ export default function App() {
       let result = null;
       try {
         const cacheContent = await FileSystem.readAsStringAsync(cacheUri);
-        result = JSON.parse(cacheContent);
+        const parsed = JSON.parse(cacheContent);
+        if (parsed && parsed.version === 6) {
+          result = parsed;
+        } else {
+          console.log("Old cache format or version mismatch, will re-parse.");
+        }
       } catch (cacheErr: any) {
         console.log("No valid cache found, parsing from scratch:", cacheErr.message);
       }
@@ -357,6 +362,7 @@ export default function App() {
               await FileSystem.writeAsStringAsync(
                 cacheUri,
                 JSON.stringify({
+                  version: 6,
                   words: result.words,
                   dialogueFlags: result.dialogueFlags,
                   chapterMarkers: result.chapterMarkers,

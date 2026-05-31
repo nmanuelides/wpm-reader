@@ -148,31 +148,204 @@ export const parseEpub = async (uri: string) => {
     const arrayBuffer = await response.arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);
 
-    let words: string[] = [];
-    let dialogueFlags: boolean[] = [];
-    let chapterMarkers: { index: number; title: string }[] = [];
+    // Find the OPF file path using META-INF/container.xml
+    let opfPath = "";
+    const containerFile = zip.file("META-INF/container.xml");
+    if (containerFile) {
+      try {
+        const containerContent = await containerFile.async("string");
+        const match = containerContent.match(/full-path="([^"]+)"/i);
+        if (match) {
+          opfPath = match[1];
+        }
+      } catch (e) {
+        console.log("Error reading container.xml:", e);
+      }
+    }
 
-    // Simplistic extraction: just read all HTML/XHTML files and strip tags
-    for (const [filename, file] of Object.entries(zip.files)) {
-      if (
-        !file.dir &&
-        (filename.endsWith(".html") ||
-          filename.endsWith(".xhtml") ||
-          filename.endsWith(".htm"))
-      ) {
+    // Fallback: search zip for any .opf file
+    if (!opfPath) {
+      for (const filename of Object.keys(zip.files)) {
+        if (filename.endsWith(".opf")) {
+          opfPath = filename;
+          break;
+        }
+      }
+    }
+
+    const htmlFiles: { filename: string; file: any }[] = [];
+
+    if (opfPath) {
+      const opfFile = zip.file(opfPath);
+      if (opfFile) {
+        try {
+          const opfContent = await opfFile.async("string");
+
+          // Extract manifest items: <item id="id" href="href" .../>
+          const manifestMap: Record<string, string> = {};
+          const itemMatches = opfContent.match(/<item\s+[^>]*>/gi) || [];
+          for (const itemTag of itemMatches) {
+            const idMatch = itemTag.match(/id="([^"]+)"/i);
+            const hrefMatch = itemTag.match(/href="([^"]+)"/i);
+            if (idMatch && hrefMatch) {
+              manifestMap[idMatch[1]] = hrefMatch[1];
+            }
+          }
+
+          // Extract spine items: <itemref idref="id"/>
+          const spineIdrefs: string[] = [];
+          const itemrefMatches = opfContent.match(/<itemref\s+[^>]*>/gi) || [];
+          for (const itemrefTag of itemrefMatches) {
+            const idrefMatch = itemrefTag.match(/idref="([^"]+)"/i);
+            if (idrefMatch) {
+              spineIdrefs.push(idrefMatch[1]);
+            }
+          }
+
+          const opfDir = opfPath.includes("/") ? opfPath.substring(0, opfPath.lastIndexOf("/") + 1) : "";
+
+          // Load files in spine order
+          for (const idref of spineIdrefs) {
+            const href = manifestMap[idref];
+            if (href) {
+              let relativePath = decodeURIComponent(href);
+              let fullPath = opfDir + relativePath;
+
+              if (relativePath.startsWith("../")) {
+                const opfDirParts = opfPath.split("/");
+                opfDirParts.pop(); // remove filename
+                const relParts = relativePath.split("/");
+                while (relParts[0] === "..") {
+                  relParts.shift();
+                  opfDirParts.pop();
+                }
+                fullPath = (opfDirParts.length > 0 ? opfDirParts.join("/") + "/" : "") + relParts.join("/");
+              }
+
+              const file = zip.file(fullPath);
+              if (file) {
+                htmlFiles.push({ filename: fullPath, file });
+              } else {
+                // Try case-insensitive search if exact match fails
+                const lowerFullPath = fullPath.toLowerCase();
+                let foundFile = null;
+                for (const [name, zipFile] of Object.entries(zip.files)) {
+                  if (name.toLowerCase() === lowerFullPath) {
+                    foundFile = { filename: name, file: zipFile };
+                    break;
+                  }
+                }
+                if (foundFile) {
+                  htmlFiles.push(foundFile);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.log("Error parsing content.opf spine:", e);
+        }
+      }
+    }
+
+    // Fallback: if spine parsing yielded no HTML files, default to scanning the whole zip
+    if (htmlFiles.length === 0) {
+      for (const [filename, file] of Object.entries(zip.files)) {
+        if (
+          !file.dir &&
+          (filename.endsWith(".html") ||
+            filename.endsWith(".xhtml") ||
+            filename.endsWith(".htm"))
+        ) {
+          htmlFiles.push({ filename, file });
+        }
+      }
+    }
+
+    const isTOCorMetadataTitle = (title: string) => {
+      const lower = title.toLowerCase().trim();
+      if (!lower) return false;
+      
+      const exactMatches = [
+        "guide", "guía", "guia", "chapter guide", "reading guide", "guía de lectura", "guia de lectura", "guía de capítulos", "guia de capitulos",
+        "table of contents", "table of content", "tabla de contenido", "tabla de contenidos", "tabla de materias",
+        "toc", "nav", "index", "indice", "índice", "contents", "contenido", "navigation", "indice general", "índice general",
+        "cover", "portada", "copyright", "about", "landmark", "landmarks", "sommaire", "resumen", "sinopsis", "synopsis",
+        "title page", "página de título", "copyright notice", "introduction", "introducción", "introduccion",
+        "créditos", "creditos", "página de créditos", "pagina de creditos"
+      ];
+      if (exactMatches.includes(lower)) {
+        return true;
+      }
+
+      const startsWithKeywords = [
+        "table of ", "tabla de ", "index of ", "indice de ", "índice de ", 
+        "copyright ", "notice of "
+      ];
+      if (startsWithKeywords.some(kw => lower.startsWith(kw))) {
+        return true;
+      }
+
+      return false;
+    };
+
+    const parseFiles = async (filesList: typeof htmlFiles, skipMetadata: boolean) => {
+      let words: string[] = [];
+      let dialogueFlags: boolean[] = [];
+      let chapterMarkers: { index: number; title: string }[] = [];
+
+      for (const { filename, file } of filesList) {
+        const basename = filename.split("/").pop()?.split(".")[0]?.toLowerCase() || "";
+        if (skipMetadata) {
+          // Skip files with metadata/TOC/guide names
+          const exacts = [
+            "toc", "nav", "cover", "titlepage", "copyright", "notice", "guide", "landmark", "landmarks", "about", "index", "contents",
+            "indice", "contenido", "guia", "portada", "prologo", "introduccion"
+          ];
+          
+          const safeSubstrings = [
+            "chapterguide", "guidebook", "tableofcontents", "contentspage", "titlepage", "copyright", "notice", "landmark", "metadata",
+            "guiadelectura"
+          ];
+
+          const parts = basename.split(/[-_\d]/);
+          const isTOCorMetadataFile = exacts.includes(basename) ||
+            safeSubstrings.some(sub => basename.replace(/[-_]/g, "").includes(sub)) ||
+            parts.some(part => exacts.includes(part));
+
+          if (isTOCorMetadataFile) {
+            continue;
+          }
+        }
+
         const content = await file.async("string");
-        // Try to extract a chapter title
-        let chapterTitle = `Chapter ${chapterMarkers.length + 1}`;
+        // Extract headings
         const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
         const h1Match = content.match(/<h1[^>]*>([^<]+)<\/h1>/i);
         const h2Match = content.match(/<h2[^>]*>([^<]+)<\/h2>/i);
 
-        if (titleMatch && titleMatch[1].trim()) {
-          chapterTitle = titleMatch[1].trim();
-        } else if (h1Match && h1Match[1].trim()) {
-          chapterTitle = h1Match[1].trim();
-        } else if (h2Match && h2Match[1].trim()) {
-          chapterTitle = h2Match[1].trim();
+        const tTitle = titleMatch ? titleMatch[1].trim() : "";
+        const h1Title = h1Match ? h1Match[1].trim() : "";
+        const h2Title = h2Match ? h2Match[1].trim() : "";
+
+        if (skipMetadata) {
+          // Skip if any heading indicates TOC or metadata
+          if (
+            isTOCorMetadataTitle(tTitle) ||
+            isTOCorMetadataTitle(h1Title) ||
+            isTOCorMetadataTitle(h2Title)
+          ) {
+            continue;
+          }
+        }
+
+        // Determine displayed chapter title
+        let chapterTitle = `Chapter ${chapterMarkers.length + 1}`;
+        if (h1Title) {
+          chapterTitle = h1Title;
+        } else if (h2Title) {
+          chapterTitle = h2Title;
+        } else if (tTitle) {
+          chapterTitle = tTitle;
         }
 
         // Preserve paragraph breaks as newlines for dialogue detection, then strip HTML
@@ -186,19 +359,40 @@ export const parseEpub = async (uri: string) => {
         const { words: chapterWords, flags: chapterFlags } =
           await extractWordsAndDialogue(cleanText);
 
+        if (skipMetadata) {
+          const linkCount = (content.match(/<a\s+[^>]*href=/gi) || []).length;
+          // Skip links-heavy Table of Contents pages
+          if (linkCount > 6 && chapterWords.length > 0) {
+            const wordsPerLink = chapterWords.length / linkCount;
+            if (wordsPerLink < 35) {
+              continue;
+            }
+          }
+        }
+
         if (chapterWords.length > 0) {
           chapterMarkers.push({ index: words.length, title: chapterTitle }); // Index where this chapter starts
           words = words.concat(chapterWords);
           dialogueFlags = dialogueFlags.concat(chapterFlags);
         }
       }
+
+      return { words, dialogueFlags, chapterMarkers };
+    };
+
+    // First try: parse while skipping TOC and metadata files
+    let result = await parseFiles(htmlFiles, true);
+    if (result.words.length === 0) {
+      // Fallback: parse everything if filtering left us with an empty book
+      result = await parseFiles(htmlFiles, false);
     }
+
     return {
-      words,
-      dialogueFlags,
+      words: result.words,
+      dialogueFlags: result.dialogueFlags,
       chapterMarkers:
-        chapterMarkers.length > 0
-          ? chapterMarkers
+        result.chapterMarkers.length > 0
+          ? result.chapterMarkers
           : [{ index: 0, title: "Book" }],
     };
   } catch (e) {
